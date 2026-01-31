@@ -122,26 +122,27 @@ class ExcelProcessor:
         """
         loaded_count = 0
         
-        # Find all XLSX files (not just "Test" named ones)
-        if max_tests is None:
-            all_xlsx_files = sorted(self.input_dir.glob("*.xlsx"))
-            test_nums = set()
-            
-            logger.info(f"Scanning {len(all_xlsx_files)} files in {self.input_dir}")
-            
-            for f in all_xlsx_files:
-                # Extract test number from filename using flexible pattern
-                test_num = self._extract_test_number_from_file(f.name)
-                if test_num:
-                    test_nums.add(test_num)
-                    logger.debug(f"Found test {test_num} in file: {f.name}")
-            
-            max_tests = max(test_nums) if test_nums else 5
-            logger.info(f"Detected max tests: {max_tests}, found test numbers: {sorted(test_nums)}")
+        # Find all XLSX files and extract test numbers
+        all_xlsx_files = sorted(self.input_dir.glob("*.xlsx"))
+        test_nums = set()
         
-        # Load each test file by number
-        for test_num in range(1, max_tests + 1):
-            # Find file with this test number
+        logger.info(f"Scanning {len(all_xlsx_files)} files in {self.input_dir}")
+        
+        for f in all_xlsx_files:
+            # Extract test number from filename using flexible pattern
+            test_num = self._extract_test_number_from_file(f.name)
+            if test_num:
+                test_nums.add(test_num)
+                logger.debug(f"Found test {test_num} in file: {f.name}")
+        
+        logger.info(f"Found test numbers: {sorted(test_nums)}")
+        
+        if not test_nums:
+            logger.warning("No test files found in directory")
+            return 0
+        
+        # Load ONLY the tests that were actually sent (not fill gaps)
+        for test_num in sorted(test_nums):
             matching_file = self._find_test_file(test_num)
             
             if matching_file:
@@ -150,7 +151,7 @@ class ExcelProcessor:
                     loaded_count += 1
                     logger.info(f"Successfully loaded test {test_num}: {len(self.test_data.get(test_num, {}))} participants")
             else:
-                logger.info(f"No test {test_num} file found")
+                logger.warning(f"Test {test_num} was detected but file not found (should not happen)")
         
         return loaded_count
     
