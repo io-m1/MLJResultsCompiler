@@ -3,6 +3,33 @@
 
 ---
 
+## 🚀 **NEW! Web Interface Available**
+
+This system now includes a **beautiful terminal-style web interface**!
+
+### Quick Start
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+Then open: **http://localhost:3000**
+
+**Features:**
+- 🖥️ Terminal-style chat interface
+- 📁 Drag & drop Excel file upload
+- ⚡ Real-time processing status
+- 🎨 Professional dark theme
+- ✅ Automatic validation
+
+**Read More:**
+- [What's New](WHATS_NEW.md) - Overview of new features
+- [Quick Start](frontend/START_HERE.md) - 2-minute setup
+- [Complete Setup](FRONTEND_SETUP.md) - Detailed guide
+- [Interface Preview](frontend/INTERFACE_PREVIEW.md) - See the UI
+
+---
+
 ## 🎯 What This System Does
 
 This is a **production-ready automation platform** that eliminates manual errors in monthly exam result processing. Instead of hours of manual work and spreadsheet errors, you get:
