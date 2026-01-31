@@ -155,15 +155,28 @@ class ExcelProcessor:
             logger.warning("No test files found in directory")
             return 0
         
+        # Log all files found in directory
+        logger.info(f"All XLSX files in directory:")
+        for f in all_xlsx_files:
+            extracted_num = self._extract_test_number_from_file(f.name)
+            logger.info(f"  {f.name} -> Test {extracted_num}")
+        
         # Load ONLY the tests that were actually sent (not fill gaps)
         for test_num in sorted(test_nums):
             matching_file = self._find_test_file(test_num)
             
             if matching_file:
                 logger.info(f"Loading test {test_num} from: {matching_file.name}")
-                if self.load_test_file(matching_file, test_num):
+                success = self.load_test_file(matching_file, test_num)
+                if success:
                     loaded_count += 1
-                    logger.info(f"Successfully loaded test {test_num}: {len(self.test_data.get(test_num, {}))} participants")
+                    participant_count = len(self.test_data.get(test_num, {}))
+                    logger.info(f"Successfully loaded test {test_num}: {participant_count} participants")
+                    # Log participant emails for debugging
+                    emails = list(self.test_data[test_num].keys())
+                    logger.info(f"  Test {test_num} emails: {emails[:5]}{'...' if len(emails) > 5 else ''}")
+                else:
+                    logger.error(f"Failed to load test {test_num} from {matching_file.name}")
             else:
                 logger.warning(f"Test {test_num} was detected but file not found (should not happen)")
         
@@ -307,14 +320,27 @@ class ExcelProcessor:
             return {}
         
         base_test = available_tests[0]
+        logger.info(f"=== CONSOLIDATION STARTING ===")
         logger.info(f"Using Test {base_test} as base for participant list")
         logger.info(f"Starting consolidation with {len(self.test_data)} test datasets")
+        
+        # Log ALL participants in ALL tests BEFORE consolidation
+        logger.info("PRE-CONSOLIDATION PARTICIPANT BREAKDOWN:")
         for test_num in sorted(self.test_data.keys()):
-            logger.info(f"  Test {test_num}: {len(self.test_data[test_num])} participants")
+            participants = list(self.test_data[test_num].keys())
+            logger.info(f"  Test {test_num}: {len(participants)} participants")
+            if len(participants) > 0:
+                logger.info(f"    Sample: {participants[:3]}{'...' if len(participants) > 3 else ''}")
+            else:
+                logger.warning(f"  Test {test_num} has NO participants!")
         
         consolidated = {}
         
         # Iterate through base test participants (primary source)
+        logger.info(f"Processing base test {base_test} participants...")
+        base_participants = list(self.test_data[base_test].keys())
+        logger.info(f"Base test {base_test} has {len(base_participants)} participants: {base_participants}")
+        
         for email, data in self.test_data[base_test].items():
             consolidated[email] = {
                 'name': data['name'],
@@ -328,17 +354,22 @@ class ExcelProcessor:
                     if email in self.test_data[test_num]:
                         score = self.test_data[test_num][email]['score']
                         consolidated[email][f'test_{test_num}_score'] = score
-                        logger.debug(f"  {email}: Test {test_num} score = {score}")
                     else:
                         # Explicitly set as None if not found
                         consolidated[email][f'test_{test_num}_score'] = None
-                        logger.debug(f"  {email}: Test {test_num} NOT FOUND (None)")
+        
+        logger.info(f"After base test: {len(consolidated)} participants")
         
         # Sort by name
         consolidated = dict(sorted(consolidated.items(), 
                                   key=lambda x: x[1]['name'].lower()))
         
-        logger.info(f"Consolidated {len(consolidated)} participants across {len(self.test_data)} tests")
+        logger.info(f"=== CONSOLIDATION COMPLETE ===")
+        logger.info(f"Final consolidated: {len(consolidated)} participants across {len(self.test_data)} tests")
+        if consolidated:
+            first_email = list(consolidated.keys())[0]
+            first_data = consolidated[first_email]
+            logger.info(f"First participant ({first_email}): {first_data}")
         return consolidated
     
     def generate_preview_image(self, consolidated_data: Dict, max_rows: int = 12) -> Optional[Path]:
