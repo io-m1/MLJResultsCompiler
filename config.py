@@ -199,3 +199,27 @@ def create_example_config(output_path: str = "config_example.json") -> bool:
     """Create an example configuration file"""
     config = BotConfig()
     return config.save_to_json(output_path)
+
+
+@dataclass
+class ConversationalConfig:
+    """Configuration for conversational document processing features"""
+    enable_intent_detection: bool = True
+    enable_ocr: bool = False  # Requires additional dependencies
+    enable_pdf_parsing: bool = True
+    max_conversation_history: int = 20
+    intent_confidence_threshold: float = 0.7
+    ocr_language: str = 'eng'
+    pdf_extraction_mode: str = 'auto'  # 'text', 'ocr', 'auto'
+    enable_multi_format_support: bool = True
+    enable_conversational_mode: bool = True
+
+
+# Global default conversational configuration
+DEFAULT_CONVERSATIONAL_CONFIG = ConversationalConfig()
+
+
+def get_default_conversational_config() -> ConversationalConfig:
+    """Get the default conversational configuration"""
+    return ConversationalConfig()
+

@@ -1,12 +1,13 @@
 """
 Session Management Agent for MLJ Bot
 Tracks user sessions, uploaded files, and consolidation workflow state
+Enhanced with conversational intelligence and multi-format document support
 """
 
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import shutil
 from datetime import datetime
 
@@ -25,10 +26,24 @@ class SessionManager:
             self.sessions[user_id] = {
                 'user_id': user_id,
                 'created_at': datetime.now(),
-                'uploaded_files': {},  # {test_num: file_path}
+                'uploaded_files': {},  # {test_num: file_path} - legacy format
                 'temp_dir': tempfile.mkdtemp(),
                 'state': 'waiting_for_files',  # waiting_for_files, ready_to_consolidate
-                'messages': []
+                'messages': [],
+                # NEW: Conversational features
+                'conversation_history': [],  # List of {role, message, timestamp}
+                'detected_intent': None,
+                'intent_confidence': 0.0,
+                'collected_documents': [],  # Enhanced file tracking with metadata
+                'clarification_needed': [],
+                'processing_context': {
+                    'merge_strategy': None,
+                    'output_format': None,
+                    'custom_columns': [],
+                    'filters': {},
+                    'detected_schema': None
+                },
+                'workflow_state': 'initial'  # initial → collecting → clarifying → processing → complete
             }
             logger.info(f"Created new session for user {user_id}")
         
@@ -128,6 +143,142 @@ class SessionManager:
             msg += f"Press /consolidate to merge all {len(tests)} tests"
         
         return msg
+
+
+class ConversationalSession:
+    """Enhanced session manager with conversation intelligence"""
+    
+    def __init__(self, session_manager: SessionManager, user_id: int):
+        """
+        Initialize conversational session wrapper
+        
+        Args:
+            session_manager: Base SessionManager instance
+            user_id: User ID
+        """
+        self.session_manager = session_manager
+        self.user_id = user_id
+        self.session = session_manager.get_session(user_id)
+    
+    def add_message(self, message: str, role: str = 'user'):
+        """
+        Track conversation with context
+        
+        Args:
+            message: Message text
+            role: 'user' or 'bot' or 'system'
+        """
+        self.session['conversation_history'].append({
+            'role': role,
+            'message': message,
+            'timestamp': datetime.now(),
+            'intent': self.session.get('detected_intent')
+        })
+        logger.debug(f"Added message to conversation history (role: {role})")
+    
+    def update_intent(self, intent: str, confidence: float):
+        """
+        Update detected intent with confidence tracking
+        
+        Args:
+            intent: Detected intent name
+            confidence: Confidence score (0-1)
+        """
+        self.session['detected_intent'] = intent
+        self.session['intent_confidence'] = confidence
+        self.add_message(f"Intent detected: {intent} ({confidence:.2%})", role='system')
+        logger.info(f"Updated intent for user {self.user_id}: {intent} ({confidence:.2%})")
+    
+    def add_document(self, file_path: str, file_info: Dict[str, Any]):
+        """
+        Enhanced file tracking with metadata
+        
+        Args:
+            file_path: Path to uploaded file
+            file_info: File metadata from document parser
+        """
+        self.session['collected_documents'].append({
+            'path': file_path,
+            'format': file_info.get('format'),
+            'type': file_info.get('type'),
+            'size': file_info.get('size'),
+            'name': file_info.get('name'),
+            'parsed_data': None,  # Will be populated by parser
+            'schema': None,
+            'uploaded_at': datetime.now()
+        })
+        logger.info(f"Added document to session: {file_info.get('name')}")
+    
+    def get_document_count(self) -> int:
+        """Get number of uploaded documents"""
+        return len(self.session.get('collected_documents', []))
+    
+    def get_documents(self) -> List[Dict[str, Any]]:
+        """Get all uploaded documents"""
+        return self.session.get('collected_documents', [])
+    
+    def generate_clarification(self) -> Optional[str]:
+        """
+        Generate intelligent clarification questions
+        
+        Returns:
+            Clarification question or None
+        """
+        intent = self.session.get('detected_intent')
+        documents = self.session.get('collected_documents', [])
+        
+        if intent == 'test_consolidation':
+            if not documents:
+                return "Please upload your test Excel files to get started."
+            elif len(documents) < 2:
+                return "You can upload more test files or use /consolidate to process."
+        
+        return None
+    
+    def infer_user_goal(self) -> Dict[str, Any]:
+        """
+        Use conversation history to infer what user wants
+        
+        Returns:
+            Dictionary with inferred goals and context
+        """
+        history = self.session.get('conversation_history', [])
+        intent = self.session.get('detected_intent')
+        documents = self.session.get('collected_documents', [])
+        
+        return {
+            'intent': intent,
+            'confidence': self.session.get('intent_confidence', 0.0),
+            'has_files': len(documents) > 0,
+            'file_count': len(documents),
+            'message_count': len(history),
+            'workflow_state': self.session.get('workflow_state', 'initial')
+        }
+    
+    def get_conversation_context(self, limit: int = 5) -> str:
+        """
+        Get recent conversation for context-aware responses
+        
+        Args:
+            limit: Number of recent messages to include
+            
+        Returns:
+            Formatted conversation context
+        """
+        history = self.session.get('conversation_history', [])
+        recent = history[-limit:] if len(history) > limit else history
+        
+        return "\n".join([f"{m['role']}: {m['message']}" for m in recent])
+    
+    def update_workflow_state(self, state: str):
+        """
+        Update workflow state
+        
+        Args:
+            state: New state (initial, collecting, clarifying, processing, complete)
+        """
+        self.session['workflow_state'] = state
+        logger.info(f"Workflow state updated to: {state}")
 
 
 class WorkflowAgent:
