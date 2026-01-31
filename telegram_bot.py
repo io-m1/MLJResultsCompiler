@@ -333,19 +333,49 @@ I can help you consolidate test results from multiple Excel files.
         action = query.data.split('_')[1]  # confirm, full, or cancel
         
         if action == 'cancel':
-            await query.edit_message_text("❌ Operation cancelled")
+            # Try to delete image message
+            try:
+                await query.delete_message()
+            except:
+                await query.edit_message_text("❌ Operation cancelled")
             return ConversationHandler.END
         
         elif action == 'full':
             # Show full data preview
             consolidated_data = context.user_data.get('consolidated_data', {})
             validation_report = context.user_data.get('validation_report')
+            processor = context.user_data.get('processor')
+            
+            # Generate full preview image (all rows)
+            if processor:
+                full_image_path = processor.generate_preview_image(consolidated_data, max_rows=999)
+                if full_image_path and full_image_path.exists():
+                    try:
+                        await query.delete_message()
+                        await context.bot.send_photo(
+                            chat_id=update.effective_chat.id,
+                            photo=open(full_image_path, 'rb'),
+                            caption="📊 **FULL CONSOLIDATION DATA** (all participants shown)\n\n_Use Back button to return to quick preview_",
+                            parse_mode="Markdown"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error sending full image: {str(e)}")
+                        full_preview = self._generate_preview(consolidated_data, max_rows=999, validation_report=validation_report)
+                        await query.edit_message_text(full_preview, parse_mode="Markdown")
+                    return CONFIRMING_PREVIEW
+            
+            # Fallback to text
             full_preview = self._generate_preview(consolidated_data, max_rows=999, validation_report=validation_report)
             await query.edit_message_text(full_preview, parse_mode="Markdown")
             return CONFIRMING_PREVIEW
         
         elif action == 'confirm':
             # User confirmed, show format selection
+            try:
+                await query.delete_message()
+            except:
+                pass
+            
             keyboard = [
                 [
                     InlineKeyboardButton("📊 Excel (XLSX)", callback_data='format_xlsx'),
@@ -360,8 +390,9 @@ I can help you consolidate test results from multiple Excel files.
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await query.edit_message_text(
-                "📋 Great! Choose your output format:",
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="📋 Great! Choose your output format:",
                 reply_markup=reply_markup
             )
             return SELECTING_OUTPUT_FORMAT
@@ -436,24 +467,66 @@ I can help you consolidate test results from multiple Excel files.
             context.user_data['output_dir'] = str(output_dir)
             context.user_data['format_choice'] = format_choice
             
-            # Show preview before download
-            preview = self._generate_preview(consolidated_data, validation_report=validation_report)
-            keyboard = [
-                [
-                    InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
-                    InlineKeyboardButton("❓ Show Full Data", callback_data='preview_full'),
-                ],
-                [
-                    InlineKeyboardButton("❌ Cancel", callback_data='preview_cancel'),
+            # Generate visual preview image
+            preview_image_path = processor.generate_preview_image(consolidated_data, max_rows=10)
+            if preview_image_path and preview_image_path.exists():
+                context.user_data['preview_image_path'] = str(preview_image_path)
+                
+                # Build validation warnings text
+                warnings_text = ""
+                if validation_report:
+                    if validation_report.get('missing_participants'):
+                        warnings_text += f"⚠️ **MISSING SCORES:** {len(validation_report['missing_participants'])} participant(s) missing from some tests\n"
+                    if validation_report.get('name_mismatches'):
+                        warnings_text += f"🔴 **NAME MISMATCH:** {len(validation_report['name_mismatches'])} name conflict(s)\n"
+                    if validation_report.get('duplicate_scores'):
+                        warnings_text += f"❓ **IDENTICAL SCORES:** {len(validation_report['duplicate_scores'])} participant(s)\n"
+                
+                caption = "📊 **VISUAL CONSOLIDATION PREVIEW**\n"
+                if warnings_text:
+                    caption += "\n" + warnings_text + "\n"
+                caption += "_Click buttons below to proceed or see full data_"
+                
+                keyboard = [
+                    [
+                        InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
+                        InlineKeyboardButton("❓ Show Full Data", callback_data='preview_full'),
+                    ],
+                    [
+                        InlineKeyboardButton("❌ Cancel", callback_data='preview_cancel'),
+                    ]
                 ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                preview,
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Delete text message and send photo with buttons
+                await query.delete_message()
+                await context.bot.send_photo(
+                    chat_id=update.effective_chat.id,
+                    photo=open(preview_image_path, 'rb'),
+                    caption=caption,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
+            else:
+                # Fallback to text preview if image generation failed
+                logger.warning("Preview image generation failed, falling back to text preview")
+                preview = self._generate_preview(consolidated_data, validation_report=validation_report)
+                keyboard = [
+                    [
+                        InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
+                        InlineKeyboardButton("❓ Show Full Data", callback_data='preview_full'),
+                    ],
+                    [
+                        InlineKeyboardButton("❌ Cancel", callback_data='preview_cancel'),
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.edit_message_text(
+                    preview,
+                    reply_markup=reply_markup,
+                    parse_mode="Markdown"
+                )
             
             return CONFIRMING_PREVIEW
             

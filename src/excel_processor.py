@@ -17,6 +17,7 @@ from reportlab.lib.pagesizes import letter, A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from PIL import Image, ImageDraw, ImageFont
 
 from src.validators import clean_name, clean_email, parse_score, validate_row_data
 from src.color_config import get_fill_for_test, TEST_COLORS
@@ -332,6 +333,142 @@ class ExcelProcessor:
         
         logger.info(f"Consolidated {len(consolidated)} participants across {len(self.test_data)} tests")
         return consolidated
+    
+    def generate_preview_image(self, consolidated_data: Dict, max_rows: int = 12) -> Optional[Path]:
+        """
+        Generate a visual preview image showing consolidation summary and data table
+        
+        Args:
+            consolidated_data (Dict): Consolidated results
+            max_rows (int): Maximum rows to show in preview
+            
+        Returns:
+            Path: Path to generated image file, or None if failed
+        """
+        try:
+            # Get test numbers and stats
+            test_nums = set()
+            for data in consolidated_data.values():
+                for key in data.keys():
+                    if key.startswith('test_') and key.endswith('_score'):
+                        test_nums.add(int(key.split('_')[1]))
+            test_nums = sorted(test_nums)
+            
+            total_participants = len(consolidated_data)
+            rows_to_show = min(max_rows, total_participants)
+            
+            # Image dimensions
+            col_width = 150
+            row_height = 30
+            header_height = 100
+            
+            # Calculate image size
+            num_cols = 2 + len(test_nums)  # Name + Email + Test scores
+            img_width = col_width * num_cols + 20
+            img_height = header_height + (rows_to_show + 1) * row_height + 80
+            
+            # Create image
+            img = Image.new('RGB', (img_width, img_height), color='white')
+            draw = ImageDraw.Draw(img)
+            
+            # Use default font (PIL will use a basic font)
+            try:
+                title_font = ImageFont.truetype("arial.ttf", 16)
+                header_font = ImageFont.truetype("arial.ttf", 12)
+                data_font = ImageFont.truetype("arial.ttf", 10)
+            except:
+                # Fallback to default font
+                title_font = ImageFont.load_default()
+                header_font = ImageFont.load_default()
+                data_font = ImageFont.load_default()
+            
+            # Draw header
+            draw.text((10, 5), "📊 CONSOLIDATION PREVIEW", fill='black', font=title_font)
+            draw.text((10, 30), f"Participants: {total_participants} | Tests: {', '.join(f'T{t}' for t in test_nums)}", 
+                     fill='#333333', font=data_font)
+            
+            # Draw column headers
+            y = header_height
+            x = 10
+            headers = ['Name', 'Email'] + [f'Test {t}' for t in test_nums]
+            
+            for col_idx, header in enumerate(headers):
+                # Alternate header background
+                if col_idx % 2 == 0:
+                    draw.rectangle([(x, y), (x + col_width, y + row_height)], fill='#E8E8E8')
+                else:
+                    draw.rectangle([(x, y), (x + col_width, y + row_height)], fill='#F5F5F5')
+                
+                draw.rectangle([(x, y), (x + col_width, y + row_height)], outline='#CCCCCC')
+                draw.text((x + 5, y + 8), header[:15], fill='black', font=header_font)
+                x += col_width
+            
+            y += row_height
+            
+            # Draw data rows
+            for row_idx, (email, data) in enumerate(consolidated_data.items()):
+                if row_idx >= rows_to_show:
+                    break
+                
+                x = 10
+                name = data['name'][:20]  # Truncate long names
+                
+                # Alternate row colors
+                row_color = '#FFFFFF' if row_idx % 2 == 0 else '#F9F9F9'
+                
+                # Draw Name
+                draw.rectangle([(x, y), (x + col_width, y + row_height)], fill=row_color)
+                draw.rectangle([(x, y), (x + col_width, y + row_height)], outline='#DDDDDD')
+                draw.text((x + 5, y + 8), name, fill='black', font=data_font)
+                x += col_width
+                
+                # Draw Email
+                draw.rectangle([(x, y), (x + col_width, y + row_height)], fill=row_color)
+                draw.rectangle([(x, y), (x + col_width, y + row_height)], outline='#DDDDDD')
+                email_display = email[:18] + '..' if len(email) > 18 else email
+                draw.text((x + 5, y + 8), email_display, fill='#666666', font=data_font)
+                x += col_width
+                
+                # Draw scores with color coding
+                for test_num in test_nums:
+                    score = data.get(f'test_{test_num}_score')
+                    score_text = str(int(score)) if score is not None else '—'
+                    
+                    # Get test color
+                    if test_num in TEST_COLORS:
+                        color_hex = TEST_COLORS[test_num]['rgb']
+                        # Convert hex to RGB
+                        color_rgb = tuple(int(color_hex[i:i+2], 16) for i in (0, 2, 4))
+                    else:
+                        color_rgb = (200, 200, 200)
+                    
+                    # Lighten color for background
+                    bg_color = tuple(min(255, c + 100) for c in color_rgb)
+                    
+                    draw.rectangle([(x, y), (x + col_width, y + row_height)], fill=bg_color)
+                    draw.rectangle([(x, y), (x + col_width, y + row_height)], outline='#DDDDDD')
+                    draw.text((x + col_width//2 - 15, y + 8), score_text, fill='black', font=data_font)
+                    x += col_width
+                
+                y += row_height
+            
+            # Draw footer
+            if total_participants > rows_to_show:
+                draw.text((10, y + 10), f"... and {total_participants - rows_to_show} more participants", 
+                         fill='#666666', font=data_font)
+            
+            draw.text((10, y + 40), "✅ Scroll down to see validation alerts and confirm", 
+                     fill='#228B22', font=data_font)
+            
+            # Save image
+            output_path = Path(self.output_dir) / 'preview.png'
+            img.save(output_path)
+            logger.info(f"Generated preview image: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error generating preview image: {str(e)}")
+            return None
     
     def save_consolidated_file(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.xlsx") -> bool:
         """
