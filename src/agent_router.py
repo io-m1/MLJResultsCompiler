@@ -14,6 +14,8 @@ try:
         BaseProcessingAgent,
         ProcessingResult,
         TestCompilerAgent,
+        DataCleaningAgent,
+        ReportGeneratorAgent,
     )
     from src.agents.invoice_agent import InvoiceProcessorAgent
     from src.agents.ocr_agent import ImageOCRAgent
@@ -68,6 +70,8 @@ class AgentRouter:
                 'invoice_processor': InvoiceProcessorAgent(),
                 'image_ocr': ImageOCRAgent(),
                 'table_merger': GenericTableMergerAgent(),
+                'data_cleaner': DataCleaningAgent(),
+                'report_generator': ReportGeneratorAgent(),
                 'generic': FallbackAgent(),
             }
         else:
@@ -92,11 +96,11 @@ class AgentRouter:
         # Routing map - defines which agent handles which intent
         routing_map = {
             'test_consolidation': 'test_compiler',
-            'invoice_processing': 'generic',  # Placeholder
-            'image_extraction': 'generic',     # Placeholder
-            'table_merge': 'generic',          # Placeholder
-            'report_generation': 'generic',    # Placeholder
-            'data_cleaning': 'generic',        # Placeholder
+            'invoice_processing': 'invoice_processor',  # Placeholder
+            'image_extraction': 'image_ocr',     # Placeholder
+            'table_merge': 'table_merger',       # ACTIVE: Real implementation
+            'report_generation': 'report_generator',  # ACTIVE: Real implementation
+            'data_cleaning': 'data_cleaner',     # ACTIVE: Real implementation
         }
         
         # Get agent name from routing map

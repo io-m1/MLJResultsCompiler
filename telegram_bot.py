@@ -187,12 +187,12 @@ class TelegramBotHandler:
                 "📤 Send me test Excel files for consolidation."
             )
         
-        elif intent == 'table_merge' or intent == 'data_cleaning':
+        elif intent == 'table_merge' or intent == 'data_cleaning' or intent == 'report_generation':
             return (
                 f"🔧 **{intent.replace('_', ' ').title()}**\n\n"
-                f"This advanced feature is coming soon!\n\n"
-                f"Right now, I can consolidate test results from Excel files.\n"
-                f"📤 Send me your test files to get started!"
+                f"✅ This feature is now available!\n\n"
+                f"📤 Send me your data files (Excel, CSV) and I'll process them.\n"
+                f"You can upload multiple files for {intent.replace('_', ' ')}."
             )
         
         elif intent == 'unknown':
