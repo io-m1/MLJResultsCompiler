@@ -498,8 +498,7 @@ I can help you consolidate test results from multiple Excel files.
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
-                # Delete text message and send photo with buttons
-                await query.delete_message()
+                # Send photo with buttons (don't delete the text message, just send new photo)
                 with open(preview_image_path, 'rb') as photo_file:
                     await context.bot.send_photo(
                         chat_id=update.effective_chat.id,
@@ -508,6 +507,13 @@ I can help you consolidate test results from multiple Excel files.
                         reply_markup=reply_markup,
                         parse_mode="Markdown"
                     )
+                
+                # Try to delete the old message if possible
+                try:
+                    await query.delete_message()
+                except:
+                    # If deletion fails, that's fine - message will just stay
+                    pass
             else:
                 # Fallback to text preview if image generation failed
                 logger.warning("Preview image generation failed, falling back to text preview")
