@@ -73,12 +73,12 @@ class SessionManager:
         uploaded = session['uploaded_files']
         
         # Decision tree for state
-        if 1 not in uploaded:
-            return 'waiting_for_test1'  # Must have Test 1
+        if not uploaded:
+            return 'waiting_for_files'  # Must have at least one file
         elif len(uploaded) == 1:
-            return 'can_consolidate_alone'  # Can process Test 1 alone
+            return 'can_consolidate_alone'  # Can process single test
         else:
-            return 'ready_to_consolidate'  # Have Test 1 + others
+            return 'ready_to_consolidate'  # Have multiple tests
     
     def get_files_for_consolidation(self, user_id: int) -> Dict[int, str]:
         """Get uploaded files ready for consolidation"""
@@ -116,13 +116,13 @@ class SessionManager:
             msg += "No files uploaded yet\n\n"
         
         # State-based guidance
-        if state == 'waiting_for_test1':
-            msg += "[REQUIRED] Test 1 is required to start consolidation\n"
-            msg += "Send Test 1 file first"
+        if state == 'waiting_for_files':
+            msg += "[REQUIRED] Upload at least one test file to get started\n"
+            msg += "Send any Test file (Test 1, 2, 3, etc.)"
         elif state == 'can_consolidate_alone':
             msg += "[READY] You can:\n"
-            msg += "- Send more tests (2-5) for comparison\n"
-            msg += "- Or press /consolidate to process Test 1 alone"
+            msg += f"- Send more tests for comparison\n"
+            msg += "- Or press /consolidate to process uploaded test(s)"
         elif state == 'ready_to_consolidate':
             msg += f"[READY] Ready to consolidate!\n"
             msg += f"Press /consolidate to merge all {len(tests)} tests"
@@ -147,9 +147,7 @@ class WorkflowAgent:
         uploaded = session['uploaded_files']
         
         if not uploaded:
-            return "ask_for_test1"
-        elif 1 not in uploaded:
-            return "ask_for_test1"
+            return "ask_for_files"
         elif len(uploaded) < 5:
             return "offer_consolidate_or_continue"  # Can accept more or consolidate
         else:
@@ -159,8 +157,8 @@ class WorkflowAgent:
     def format_suggestion(action: str) -> str:
         """Format bot suggestion based on next action"""
         suggestions = {
-            "ask_for_test1": "[INFO] Send Test 1 file first (required as base)",
-            "offer_consolidate_or_continue": "[INFO] You can send more tests (2-5) or press /consolidate now",
-            "ready_consolidate": "[OK] All 5 tests uploaded! Press /consolidate to process"
+            "ask_for_files": "[INFO] Send test file(s) to get started",
+            "offer_consolidate_or_continue": "[INFO] You can send more tests or press /consolidate now",
+            "ready_consolidate": "[OK] Multiple tests uploaded! Press /consolidate to process"
         }
         return suggestions.get(action, "Ready for next step")

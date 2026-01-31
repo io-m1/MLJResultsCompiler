@@ -433,14 +433,24 @@ I can help you consolidate test results from multiple Excel files.
             input_dir = Path(session['temp_dir'])
             output_dir = Path(tempfile.mkdtemp())
             
+            logger.info(f"User {user_id}: Processing files from {input_dir}")
+            logger.info(f"Uploaded files dict: {uploaded_files}")
+            
             processor = ExcelProcessor(str(input_dir), str(output_dir))
             
             # Load uploaded files dynamically (detects max test number)
             loaded = processor.load_all_tests()
+            logger.info(f"User {user_id}: Successfully loaded {loaded} test files")
             
             if loaded == 0:
+                logger.error(f"User {user_id}: No valid test files found in {input_dir}")
+                # List what's in the directory for debugging
+                if input_dir.exists():
+                    files_in_dir = list(input_dir.glob("*.xlsx"))
+                    logger.error(f"Files in {input_dir}: {[f.name for f in files_in_dir]}")
+                
                 await query.edit_message_text(
-                    "❌ No valid test files found. Please check your files."
+                    "❌ No valid test files found. Please check your files and try again."
                 )
                 session_manager.clear_session(user_id)
                 return ConversationHandler.END

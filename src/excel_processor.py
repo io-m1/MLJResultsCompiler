@@ -209,53 +209,57 @@ class ExcelProcessor:
             'valid': True,
             'errors': [],
             'warnings': [],
-            'missing_participants': [],  # Email in Test 1 but missing in other tests
+            'missing_participants': [],  # Email in base test but missing in other tests
             'name_mismatches': [],  # Same email with different names
             'duplicate_scores': [],  # Same email with identical scores across tests
         }
         
-        if not self.test_data or 1 not in self.test_data:
+        if not self.test_data:
             report['valid'] = False
-            report['errors'].append("Test 1 is required as the base")
+            report['errors'].append("No test data loaded")
             return report
         
-        test_1_emails = set(self.test_data[1].keys())
+        # Use FIRST available test as base (not hardcoded Test 1)
+        available_tests = sorted(self.test_data.keys())
+        base_test = available_tests[0]
+        
+        base_test_emails = set(self.test_data[base_test].keys())
         test_nums = sorted(self.test_data.keys())
         
-        # Check each Test 1 participant
-        for email, test1_data in self.test_data[1].items():
-            test1_name = test1_data['name']
-            test1_score = test1_data['score']
+        # Check each base test participant
+        for email, base_test_data in self.test_data[base_test].items():
+            base_test_name = base_test_data['name']
+            base_test_score = base_test_data['score']
             
             # Check for missing in other tests
             for test_num in test_nums:
-                if test_num != 1:
+                if test_num != base_test:
                     if email not in self.test_data[test_num]:
                         report['missing_participants'].append({
                             'email': email,
-                            'name': test1_name,
+                            'name': base_test_name,
                             'missing_in_test': test_num
                         })
             
             # Check for name mismatches across tests
-            name_variants = {test1_name}
+            name_variants = {base_test_name}
             for test_num in test_nums:
-                if test_num != 1 and email in self.test_data[test_num]:
+                if test_num != base_test and email in self.test_data[test_num]:
                     other_name = self.test_data[test_num][email]['name']
-                    if other_name.lower() != test1_name.lower():
+                    if other_name.lower() != base_test_name.lower():
                         name_variants.add(other_name)
                         report['name_mismatches'].append({
                             'email': email,
-                            'test_1_name': test1_name,
+                            'test_1_name': base_test_name,
                             'test_num': test_num,
                             'conflicting_name': other_name
                         })
             
             # Check for duplicate scores (possible copy-paste error)
             scores_by_test = {}
-            scores_by_test[1] = test1_score
+            scores_by_test[base_test] = base_test_score
             for test_num in test_nums:
-                if test_num != 1 and email in self.test_data[test_num]:
+                if test_num != base_test and email in self.test_data[test_num]:
                     scores_by_test[test_num] = self.test_data[test_num][email]['score']
             
             # Flag if all scores are identical
@@ -263,8 +267,8 @@ class ExcelProcessor:
             if len(unique_scores) == 1 and len(scores_by_test) > 1:
                 report['duplicate_scores'].append({
                     'email': email,
-                    'name': test1_name,
-                    'score': test1_score,
+                    'name': base_test_name,
+                    'score': base_test_score,
                     'in_tests': sorted(scores_by_test.keys()),
                     'note': 'Identical scores in all tests - possible copy-paste error?'
                 })
