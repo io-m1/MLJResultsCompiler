@@ -141,6 +141,7 @@ class ExcelProcessor:
         test_nums = set()
         
         logger.info(f"Scanning {len(all_xlsx_files)} files in {self.input_dir}")
+        logger.info(f"Files in order: {[f.name for f in all_xlsx_files]}")
         
         for f in all_xlsx_files:
             # Extract test number from filename using flexible pattern
@@ -162,6 +163,7 @@ class ExcelProcessor:
             logger.info(f"  {f.name} -> Test {extracted_num}")
         
         # Load ONLY the tests that were actually sent (not fill gaps)
+        logger.info(f"Loading in sorted test order: {sorted(test_nums)}")
         for test_num in sorted(test_nums):
             matching_file = self._find_test_file(test_num)
             
@@ -174,12 +176,15 @@ class ExcelProcessor:
                     logger.info(f"Successfully loaded test {test_num}: {participant_count} participants")
                     # Log participant emails for debugging
                     emails = list(self.test_data[test_num].keys())
-                    logger.info(f"  Test {test_num} emails: {emails[:5]}{'...' if len(emails) > 5 else ''}")
+                    logger.info(f"  Test {test_num} participant count: {len(emails)}")
+                    logger.info(f"  Test {test_num} emails: {emails[:10]}")
                 else:
                     logger.error(f"Failed to load test {test_num} from {matching_file.name}")
             else:
                 logger.warning(f"Test {test_num} was detected but file not found (should not happen)")
         
+        logger.info(f"Finished loading. Total tests loaded: {loaded_count}")
+        logger.info(f"Final test_data keys: {sorted(self.test_data.keys())}")
         return loaded_count
     
     def _find_test_file(self, test_num: int) -> Optional[Path]:
@@ -320,16 +325,21 @@ class ExcelProcessor:
         
         base_test = available_tests[0]
         logger.info(f"=== CONSOLIDATION STARTING ===")
-        logger.info(f"Using Test {base_test} as base for participant list")
-        logger.info(f"Starting consolidation with {len(self.test_data)} test datasets")
+        logger.info(f"Available tests found: {available_tests}")
+        logger.info(f"Using Test {base_test} as base for participant list (FIRST in sorted order)")
+        logger.info(f"All tests to consolidate: {sorted(self.test_data.keys())}")
         
-        # Log ALL participants in ALL tests BEFORE consolidation
-        logger.info("PRE-CONSOLIDATION PARTICIPANT BREAKDOWN:")
+        # Log ALL participants in ALL tests BEFORE consolidation with FULL DETAILS
+        logger.info("PRE-CONSOLIDATION PARTICIPANT BREAKDOWN (DETAILED):")
         for test_num in sorted(self.test_data.keys()):
             participants = list(self.test_data[test_num].keys())
             logger.info(f"  Test {test_num}: {len(participants)} participants")
             if len(participants) > 0:
-                logger.info(f"    Sample: {participants[:3]}{'...' if len(participants) > 3 else ''}")
+                for idx, email in enumerate(participants[:5]):
+                    data = self.test_data[test_num][email]
+                    logger.info(f"    [{idx+1}] {email} | {data['name']} | Score: {data['score']}")
+                if len(participants) > 5:
+                    logger.info(f"    ... and {len(participants) - 5} more")
             else:
                 logger.warning(f"  Test {test_num} has NO participants!")
         
@@ -338,7 +348,8 @@ class ExcelProcessor:
         # Iterate through base test participants (primary source)
         logger.info(f"Processing base test {base_test} participants...")
         base_participants = list(self.test_data[base_test].keys())
-        logger.info(f"Base test {base_test} has {len(base_participants)} participants: {base_participants}")
+        logger.info(f"Base test {base_test} has {len(base_participants)} participants")
+        logger.info(f"Base test {base_test} participant emails: {base_participants}")
         
         for email, data in self.test_data[base_test].items():
             consolidated[email] = {
