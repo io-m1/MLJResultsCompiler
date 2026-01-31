@@ -110,17 +110,28 @@ class ExcelProcessor:
             logger.error(f"Error loading {filepath.name}: {str(e)}")
             return False
     
-    def load_all_tests(self, max_tests: int = 5) -> int:
+    def load_all_tests(self, max_tests: Optional[int] = None) -> int:
         """
-        Load all test files from input directory
+        Load all test files from input directory dynamically
         
         Args:
-            max_tests (int): Maximum number of tests to load (1-5)
+            max_tests (int): Maximum number of tests to load. If None, loads all found tests.
             
         Returns:
             int: Number of tests successfully loaded
         """
         loaded_count = 0
+        
+        # Find all test files if max_tests not specified
+        if max_tests is None:
+            test_files = sorted(self.input_dir.glob("*[Tt]est*.xlsx"))
+            test_nums = set()
+            for f in test_files:
+                # Extract test number from filename
+                for part in f.stem.split():
+                    if part.isdigit():
+                        test_nums.add(int(part))
+            max_tests = max(test_nums) if test_nums else 5
         
         for test_num in range(1, max_tests + 1):
             pattern = f"*[Tt]est*{test_num}*.xlsx"
@@ -136,7 +147,7 @@ class ExcelProcessor:
     
     def consolidate_results(self) -> Dict:
         """
-        Consolidate results from all tests into a single dataset
+        Consolidate results from all tests into a single dataset dynamically
         
         Returns:
             Dict: Consolidated data {email: {name, test_1_score, test_2_score, ...}}
@@ -159,23 +170,24 @@ class ExcelProcessor:
                 'test_1_score': data['score']
             }
             
-            # Add scores from Tests 2-5
-            for test_num in range(2, 6):
-                if test_num in self.test_data and email in self.test_data[test_num]:
-                    consolidated[email][f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
-                else:
-                    consolidated[email][f'test_{test_num}_score'] = None
+            # Add scores from all other tests dynamically
+            for test_num in sorted(self.test_data.keys()):
+                if test_num != 1:
+                    if email in self.test_data[test_num]:
+                        consolidated[email][f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
+                    else:
+                        consolidated[email][f'test_{test_num}_score'] = None
         
         # Sort by name
         consolidated = dict(sorted(consolidated.items(), 
                                   key=lambda x: x[1]['name'].lower()))
         
-        logger.info(f"Consolidated {len(consolidated)} participants")
+        logger.info(f"Consolidated {len(consolidated)} participants across {len(self.test_data)} tests")
         return consolidated
     
     def save_consolidated_file(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.xlsx") -> bool:
         """
-        Save consolidated results to Excel file with color coding
+        Save consolidated results to Excel file with color coding (dynamic columns)
         
         Args:
             consolidated_data (Dict): Consolidated results
@@ -189,8 +201,18 @@ class ExcelProcessor:
             ws = wb.active
             ws.title = "Results"
             
-            # Create headers
-            headers = ['Full Name', 'Email', 'Test 1 Score', 'Test 2 Score', 'Test 3 Score', 'Test 4 Score', 'Test 5 Score']
+            # Get number of tests from data keys
+            test_nums = []
+            if consolidated_data:
+                first_record = next(iter(consolidated_data.values()))
+                for key in first_record:
+                    if key.startswith('test_') and key.endswith('_score'):
+                        test_num = int(key.split('_')[1])
+                        test_nums.append(test_num)
+                test_nums = sorted(test_nums)
+            
+            # Create headers dynamically
+            headers = ['Full Name', 'Email'] + [f'Test {num} Score' for num in test_nums]
             ws.append(headers)
             
             # Format header row
@@ -201,21 +223,13 @@ class ExcelProcessor:
             
             # Add data rows
             for email, data in consolidated_data.items():
-                row = [
-                    data['name'],
-                    email,
-                    data['test_1_score'],
-                    data.get('test_2_score'),
-                    data.get('test_3_score'),
-                    data.get('test_4_score'),
-                    data.get('test_5_score')
-                ]
+                row = [data['name'], email] + [data.get(f'test_{num}_score') for num in test_nums]
                 ws.append(row)
             
             # Apply color coding to test score columns
             for row_idx in range(2, len(consolidated_data) + 2):
-                for test_num in range(1, 6):
-                    col_idx = test_num + 2  # Column C onwards
+                for col_offset, test_num in enumerate(test_nums):
+                    col_idx = col_offset + 3  # Column C onwards (A=name, B=email)
                     cell = ws.cell(row=row_idx, column=col_idx)
                     cell.fill = get_fill_for_test(test_num)
                     cell.alignment = Alignment(horizontal='center')
@@ -223,12 +237,13 @@ class ExcelProcessor:
             # Adjust column widths
             ws.column_dimensions['A'].width = 25
             ws.column_dimensions['B'].width = 30
-            for col in ['C', 'D', 'E', 'F', 'G']:
-                ws.column_dimensions[col].width = 15
+            for col_offset in range(len(test_nums)):
+                col_letter = get_column_letter(col_offset + 3)
+                ws.column_dimensions[col_letter].width = 15
             
             output_path = self.output_dir / output_filename
             wb.save(output_path)
-            logger.info(f"Saved consolidated results to {output_path}")
+            logger.info(f"Saved consolidated results to {output_path} ({len(test_nums)} tests)")
             return True
             
         except Exception as e:
@@ -237,7 +252,7 @@ class ExcelProcessor:
     
     def save_as_pdf(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.pdf") -> bool:
         """
-        Save consolidated results to PDF file
+        Save consolidated results to PDF file (dynamic columns)
         
         Args:
             consolidated_data (Dict): Consolidated results
@@ -249,27 +264,32 @@ class ExcelProcessor:
         try:
             logger.info(f"Saving results as PDF: {output_filename}")
             
+            # Get test numbers
+            test_nums = []
+            if consolidated_data:
+                first_record = next(iter(consolidated_data.values()))
+                for key in first_record:
+                    if key.startswith('test_') and key.endswith('_score'):
+                        test_num = int(key.split('_')[1])
+                        test_nums.append(test_num)
+                test_nums = sorted(test_nums)
+            
             # Prepare data for table
-            data = [['Full Name', 'Email', 'Test 1', 'Test 2', 'Test 3', 'Test 4', 'Test 5']]
+            data = [['Full Name', 'Email'] + [f'Test {num}' for num in test_nums]]
             
             for email, record in consolidated_data.items():
                 row = [
                     record['name'],
-                    email,
-                    str(record.get('test_1_score') or ''),
-                    str(record.get('test_2_score') or ''),
-                    str(record.get('test_3_score') or ''),
-                    str(record.get('test_4_score') or ''),
-                    str(record.get('test_5_score') or '')
-                ]
+                    email
+                ] + [str(record.get(f'test_{num}_score') or '') for num in test_nums]
                 data.append(row)
             
             # Create PDF
             output_path = self.output_dir / output_filename
             doc = SimpleDocTemplate(str(output_path), pagesize=letter, topMargin=0.5*inch)
             
-            # Create table
-            col_widths = [1.8*inch, 2.2*inch, 0.9*inch, 0.9*inch, 0.9*inch, 0.9*inch, 0.9*inch]
+            # Calculate column widths dynamically
+            col_widths = [1.8*inch, 2.2*inch] + [0.9*inch] * len(test_nums)
             table = Table(data, colWidths=col_widths)
             
             # Style table
@@ -285,11 +305,11 @@ class ExcelProcessor:
                 ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
             ]
             
-            # Add color backgrounds to test score columns
+            # Add color backgrounds to test score columns dynamically
             for row_idx in range(1, len(data)):
-                for test_num in range(1, 6):
-                    col_idx = test_num + 2  # Starting from column C
-                    color_hex = TEST_COLORS[test_num]['rgb']
+                for col_offset, test_num in enumerate(test_nums):
+                    col_idx = col_offset + 2  # Starting from column C
+                    color_hex = TEST_COLORS.get(test_num, {}).get('rgb', 'FFFFFF')
                     rgb = colors.HexColor(f'#{color_hex}')
                     style_commands.append(('BACKGROUND', (col_idx, row_idx), (col_idx, row_idx), rgb))
             
@@ -308,7 +328,7 @@ class ExcelProcessor:
     
     def save_as_docx(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.docx") -> bool:
         """
-        Save consolidated results to DOCX file
+        Save consolidated results to DOCX file (dynamic columns)
         
         Args:
             consolidated_data (Dict): Consolidated results
@@ -320,21 +340,33 @@ class ExcelProcessor:
         try:
             logger.info(f"Saving results as DOCX: {output_filename}")
             
+            # Get test numbers
+            test_nums = []
+            if consolidated_data:
+                first_record = next(iter(consolidated_data.values()))
+                for key in first_record:
+                    if key.startswith('test_') and key.endswith('_score'):
+                        test_num = int(key.split('_')[1])
+                        test_nums.append(test_num)
+                test_nums = sorted(test_nums)
+            
             # Create document
             doc = Document()
             doc.add_heading('Consolidated Test Results', 0)
             
             # Add summary
             doc.add_paragraph(f'Total Participants: {len(consolidated_data)}')
+            doc.add_paragraph(f'Tests Included: {len(test_nums)}')
             doc.add_paragraph('')
             
-            # Create table
-            table = doc.add_table(rows=1, cols=7)
+            # Create table with dynamic columns
+            num_cols = len(test_nums) + 2  # Name + Email + Tests
+            table = doc.add_table(rows=1, cols=num_cols)
             table.style = 'Light Grid Accent 1'
             
             # Add header row
             header_cells = table.rows[0].cells
-            headers = ['Full Name', 'Email', 'Test 1', 'Test 2', 'Test 3', 'Test 4', 'Test 5']
+            headers = ['Full Name', 'Email'] + [f'Test {num}' for num in test_nums]
             
             for idx, header_text in enumerate(headers):
                 header_cells[idx].text = header_text
@@ -347,14 +379,12 @@ class ExcelProcessor:
                 row_cells = table.add_row().cells
                 row_cells[0].text = record['name']
                 row_cells[1].text = email
-                row_cells[2].text = str(record.get('test_1_score') or '')
-                row_cells[3].text = str(record.get('test_2_score') or '')
-                row_cells[4].text = str(record.get('test_3_score') or '')
-                row_cells[5].text = str(record.get('test_4_score') or '')
-                row_cells[6].text = str(record.get('test_5_score') or '')
+                
+                for col_offset, test_num in enumerate(test_nums):
+                    row_cells[col_offset + 2].text = str(record.get(f'test_{test_num}_score') or '')
                 
                 # Center align score columns
-                for col_idx in range(2, 7):
+                for col_idx in range(2, 2 + len(test_nums)):
                     for paragraph in row_cells[col_idx].paragraphs:
                         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
