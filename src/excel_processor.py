@@ -197,6 +197,93 @@ class ExcelProcessor:
         return None
         return loaded_count
     
+    def validate_data_integrity(self) -> Dict:
+        """
+        Validate data integrity across all tests and return error report
+        
+        Returns:
+            Dict with keys: 'valid', 'errors', 'warnings', 'missing_participants', 'name_mismatches', 'duplicate_scores'
+        """
+        report = {
+            'valid': True,
+            'errors': [],
+            'warnings': [],
+            'missing_participants': [],  # Email in Test 1 but missing in other tests
+            'name_mismatches': [],  # Same email with different names
+            'duplicate_scores': [],  # Same email with identical scores across tests
+        }
+        
+        if not self.test_data or 1 not in self.test_data:
+            report['valid'] = False
+            report['errors'].append("Test 1 is required as the base")
+            return report
+        
+        test_1_emails = set(self.test_data[1].keys())
+        test_nums = sorted(self.test_data.keys())
+        
+        # Check each Test 1 participant
+        for email, test1_data in self.test_data[1].items():
+            test1_name = test1_data['name']
+            test1_score = test1_data['score']
+            
+            # Check for missing in other tests
+            for test_num in test_nums:
+                if test_num != 1:
+                    if email not in self.test_data[test_num]:
+                        report['missing_participants'].append({
+                            'email': email,
+                            'name': test1_name,
+                            'missing_in_test': test_num
+                        })
+            
+            # Check for name mismatches across tests
+            name_variants = {test1_name}
+            for test_num in test_nums:
+                if test_num != 1 and email in self.test_data[test_num]:
+                    other_name = self.test_data[test_num][email]['name']
+                    if other_name.lower() != test1_name.lower():
+                        name_variants.add(other_name)
+                        report['name_mismatches'].append({
+                            'email': email,
+                            'test_1_name': test1_name,
+                            'test_num': test_num,
+                            'conflicting_name': other_name
+                        })
+            
+            # Check for duplicate scores (possible copy-paste error)
+            scores_by_test = {}
+            scores_by_test[1] = test1_score
+            for test_num in test_nums:
+                if test_num != 1 and email in self.test_data[test_num]:
+                    scores_by_test[test_num] = self.test_data[test_num][email]['score']
+            
+            # Flag if all scores are identical
+            unique_scores = set(scores_by_test.values())
+            if len(unique_scores) == 1 and len(scores_by_test) > 1:
+                report['duplicate_scores'].append({
+                    'email': email,
+                    'name': test1_name,
+                    'score': test1_score,
+                    'in_tests': sorted(scores_by_test.keys()),
+                    'note': 'Identical scores in all tests - possible copy-paste error?'
+                })
+        
+        # Set validity
+        if report['errors'] or report['name_mismatches']:
+            report['valid'] = False
+        
+        if report['missing_participants'] or report['duplicate_scores']:
+            report['warnings'].append(
+                f"{len(report['missing_participants'])} missing participant(s) and "
+                f"{len(report['duplicate_scores'])} potential duplicate score(s)"
+            )
+        
+        logger.info(f"Data integrity check: {len(report['missing_participants'])} missing, "
+                   f"{len(report['name_mismatches'])} name mismatches, "
+                   f"{len(report['duplicate_scores'])} duplicate scores")
+        
+        return report
+    
     def consolidate_results(self) -> Dict:
         """
         Consolidate results from all tests into a single dataset dynamically

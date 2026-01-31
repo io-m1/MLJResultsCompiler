@@ -224,8 +224,8 @@ I can help you consolidate test results from multiple Excel files.
         return SELECTING_FORMAT
     
     @staticmethod
-    def _generate_preview(consolidated_data: Dict, max_rows: int = 10) -> str:
-        """Generate a text preview of consolidated results"""
+    def _generate_preview(consolidated_data: Dict, max_rows: int = 10, validation_report: Dict = None) -> str:
+        """Generate a text preview of consolidated results with validation warnings"""
         if not consolidated_data:
             return "❌ No data to preview"
         
@@ -246,9 +246,28 @@ I can help you consolidate test results from multiple Excel files.
 📈 **Summary:**
 • Total Participants: {total_participants}
 • Tests Consolidated: {', '.join(f'Test {t}' for t in test_nums)}
-
-📋 **First {min(max_rows, total_participants)} Records:**
 """
+        
+        # Add validation warnings if present
+        if validation_report:
+            if validation_report.get('missing_participants'):
+                preview += f"\n⚠️ **MISSING SCORES:** {len(validation_report['missing_participants'])} participant(s) missing from some tests"
+                for item in validation_report['missing_participants'][:3]:
+                    preview += f"\n   • {item['name']} - missing in Test {item['missing_in_test']}"
+                if len(validation_report['missing_participants']) > 3:
+                    preview += f"\n   ... and {len(validation_report['missing_participants']) - 3} more"
+            
+            if validation_report.get('name_mismatches'):
+                preview += f"\n🔴 **NAME MISMATCH:** {len(validation_report['name_mismatches'])} name conflict(s)"
+                for item in validation_report['name_mismatches'][:2]:
+                    preview += f"\n   • {item['email']}: Test 1='{item['test_1_name']}' vs Test {item['test_num']}='{item['conflicting_name']}'"
+            
+            if validation_report.get('duplicate_scores'):
+                preview += f"\n❓ **IDENTICAL SCORES:** {len(validation_report['duplicate_scores'])} participant(s)"
+                for item in validation_report['duplicate_scores'][:3]:
+                    preview += f"\n   • {item['name']}: {item['score']} in all tests (possible error?)"
+        
+        preview += f"\n\n📋 **First {min(max_rows, total_participants)} Records:**\n"
         
         # Add sample rows
         for idx, (email, data) in enumerate(consolidated_data.items()):
@@ -320,7 +339,8 @@ I can help you consolidate test results from multiple Excel files.
         elif action == 'full':
             # Show full data preview
             consolidated_data = context.user_data.get('consolidated_data', {})
-            full_preview = self._generate_preview(consolidated_data, max_rows=999)
+            validation_report = context.user_data.get('validation_report')
+            full_preview = self._generate_preview(consolidated_data, max_rows=999, validation_report=validation_report)
             await query.edit_message_text(full_preview, parse_mode="Markdown")
             return CONFIRMING_PREVIEW
         
@@ -396,6 +416,10 @@ I can help you consolidate test results from multiple Excel files.
             
             logger.info(f"User {user_id}: Loaded {loaded} test files for consolidation")
             
+            # Validate data integrity
+            validation_report = processor.validate_data_integrity()
+            context.user_data['validation_report'] = validation_report
+            
             # Consolidate
             consolidated_data = processor.consolidate_results()
             
@@ -413,7 +437,7 @@ I can help you consolidate test results from multiple Excel files.
             context.user_data['format_choice'] = format_choice
             
             # Show preview before download
-            preview = self._generate_preview(consolidated_data)
+            preview = self._generate_preview(consolidated_data, validation_report=validation_report)
             keyboard = [
                 [
                     InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
