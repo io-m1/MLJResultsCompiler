@@ -2,13 +2,14 @@
 
 Automated consolidation tool for test results from SurveyHeart Excel files.
 
-## Overview
+## Features
 
-This tool processes 1-5 test result files and consolidates them into a single Excel spreadsheet with:
-- **Color-coded columns** for each test
-- **Alphabetically sorted** participants
-- **Matched records** across all tests by email
-- **Comprehensive validation** of data quality
+- 🤖 **Telegram Bot** - Upload files directly from Telegram (24/7 available)
+- 📊 **Multi-Format Export** - XLSX (with colors), PDF, DOCX
+- 📧 **Email Matching** - Automatically matches participants across tests
+- 🎨 **Color Coded** - Visual verification with test-specific colors
+- ✨ **Auto-Sorting** - Alphabetically organized results
+- ✅ **Data Validation** - Comprehensive validation and error reporting
 
 ## Test Color Scheme
 
@@ -20,51 +21,33 @@ This tool processes 1-5 test result files and consolidates them into a single Ex
 | Test 4 | Army Green | #556B2F |
 | Test 5 | Red | #FF0000 |
 
-## Project Structure
+## Quick Start
 
-```
-MLJResultsCompiler/
-├── input/              # Drop your test XLSX files here
-├── output/             # Consolidated results saved here
-├── config/             # Configuration files
-├── src/
-│   ├── main.py        # Entry point
-│   ├── excel_processor.py  # Core processing logic
-│   ├── validators.py   # Data validation
-│   └── color_config.py # Color definitions
-├── requirements.txt
-└── README.md
-```
+### Option 1: Telegram Bot (Easiest) 🤖
 
-## Installation
+1. Find your bot on Telegram (search by username)
+2. Send `/start`
+3. Upload your test XLSX files
+4. Select output format
+5. Download results instantly!
 
-1. Ensure Python 3.8+ is installed
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+**Deploy bot:** See [TELEGRAM_BOT_SETUP.md](TELEGRAM_BOT_SETUP.md)
 
-## Usage
-
-### Preparing Input Files
-
-1. Export test result files from SurveyHeart as XLSX
-2. Name them clearly: `Test 1.xlsx`, `Test 2.xlsx`, etc.
-3. Place them in the `input/` folder
-
-### Running the Consolidation
+### Option 2: Command Line
 
 ```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run with default XLSX output
 python src/main.py
+
+# Or choose format
+python src/main.py --format pdf
+python src/main.py --format docx
 ```
 
-The tool will:
-- Scan the `input/` folder for test files
-- Extract Full Name, Email, and Score columns
-- Match participants across tests by email
-- Create a consolidated file with all test scores
-- Apply color coding for visual verification
-- Save to `output/Consolidated_Results.xlsx`
+Results go to `output/` folder
 
 ## Expected Input Format
 
@@ -84,7 +67,7 @@ Missing scores for a participant in a specific test are left blank.
 
 ## Logging
 
-The process logs all operations to `test_consolidation.log` with:
+All operations are logged to `test_consolidation.log` with:
 - Timestamp of each operation
 - Number of records loaded per test
 - Validation warnings and errors
@@ -99,28 +82,23 @@ The tool validates:
 - ✓ Duplicate handling by email
 - ✓ Case normalization (names and emails)
 
-## Troubleshooting
+## Project Structure
 
-### No test files found
-- Ensure files are in the `input/` folder
-- Verify filenames contain "Test" and a number (1-5)
-- Check file extension is `.xlsx`
-
-### Column not found errors
-- Verify column headers match expected names
-- Check for extra spaces in headers
-- Ensure headers are in the first row
-
-### Invalid email errors
-- Check email format in source files
-- Look for typos or special characters
-- Review `test_consolidation.log` for specific issues
-
-## Support
-
-For issues or questions, check the log file first:
-```bash
-cat test_consolidation.log
 ```
-
-The log contains detailed information about the processing steps and any validation issues encountered.
+MLJResultsCompiler/
+├── input/                    # Drop test XLSX files here
+├── output/                   # Results saved here
+├── src/
+│   ├── main.py              # CLI entry point
+│   ├── excel_processor.py    # Core processing
+│   ├── validators.py         # Data validation
+│   └── color_config.py       # Color definitions
+├── telegram_bot.py          # Telegram bot (for deployment)
+├── generate_sample_data.py   # Create test files
+├── requirements.txt         # Python dependencies
+├── .env.example            # Environment template
+├── TELEGRAM_BOT_SETUP.md   # Bot deployment guide
+├── Procfile                # Heroku deployment
+├── runtime.txt             # Python version for Heroku
+└── README.md               # This file
+```
