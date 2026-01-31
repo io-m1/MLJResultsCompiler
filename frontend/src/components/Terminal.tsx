@@ -148,7 +148,7 @@ export default function Terminal() {
 
       addMessage('system', `⏳ Processing started (Job ID: ${data.jobId.substring(0, 8)}...)`)
       addMessage('info', 'Merging test results and calculating scores...')
-    } catch (error) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Processing failed'
       addMessage('error', `✗ Error: ${errorMessage}`)
       setIsProcessing(false)
@@ -163,7 +163,7 @@ export default function Terminal() {
       const downloadUrl = `${apiUrl}/api/download/${currentJob.jobId}`
       window.location.href = downloadUrl
       addMessage('success', '✓ Download started')
-    } catch (error) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Download failed'
       addMessage('error', `✗ Download error: ${errorMessage}`)
     }

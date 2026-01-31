@@ -62,7 +62,7 @@ export default function FileUpload({ onFilesSelected, disabled, onUploadStart, o
       onFilesSelected(selectedFiles, data.fileIds)
       setSelectedFiles([])
       setUploadProgress({})
-    } catch (error) {
+    } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed'
       onUploadError?.(errorMessage)
       console.error('Upload error:', error)
