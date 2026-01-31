@@ -10,7 +10,7 @@ BASE_COLORS = {
     1: {'name': 'White', 'rgb': 'FFFFFF'},
     2: {'name': 'Sky Blue', 'rgb': '87CEEB'},
     3: {'name': 'Yellow', 'rgb': 'FFFF00'},
-    4: {'name': 'Army Green', 'rgb': '556B2F'},
+    4: {'name': 'Lemon Green', 'rgb': 'FFFACD'},
     5: {'name': 'Red', 'rgb': 'FF0000'},
     6: {'name': 'Light Green', 'rgb': '90EE90'},
     7: {'name': 'Light Coral', 'rgb': 'F08080'},

@@ -93,7 +93,7 @@ I can help you consolidate test results from multiple Excel files.
 - Test 1: White
 - Test 2: Sky Blue
 - Test 3: Yellow
-- Test 4: Army Green
+- Test 4: Lemon Green
 - Test 5: Red
 
 ✨ **Supported Output Formats:**
