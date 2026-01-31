@@ -143,12 +143,13 @@ class ExcelProcessor:
         logger.info(f"Scanning {len(all_xlsx_files)} files in {self.input_dir}")
         logger.info(f"Files in order: {[f.name for f in all_xlsx_files]}")
         
+        # DEBUG: Show extraction for each file
+        logger.info("FILE EXTRACTION DEBUG:")
         for f in all_xlsx_files:
-            # Extract test number from filename using flexible pattern
             test_num = self._extract_test_number_from_file(f.name)
+            logger.info(f"  '{f.name}' -> Test {test_num}")
             if test_num:
                 test_nums.add(test_num)
-                logger.debug(f"Found test {test_num} in file: {f.name}")
         
         logger.info(f"Found test numbers: {sorted(test_nums)}")
         
@@ -214,17 +215,17 @@ class ExcelProcessor:
         match = re.search(r'[Tt]est\s*(\d+)', name_without_ext)
         if match:
             result = int(match.group(1))
-            logger.debug(f"_extract_test_number: '{filename}' -> Test {result} (via 'Test N' pattern)")
+            logger.debug(f"  Extract '{filename}': matched 'Test N' pattern -> {result}")
             return result
         
         # Try 2: Look for any number in the filename
         match = re.search(r'(\d+)', name_without_ext)
         if match:
             result = int(match.group(1))
-            logger.debug(f"_extract_test_number: '{filename}' -> Test {result} (via number pattern)")
+            logger.debug(f"  Extract '{filename}': matched number pattern -> {result}")
             return result
         
-        logger.warning(f"_extract_test_number: '{filename}' -> No number found!")
+        logger.warning(f"  Extract '{filename}': NO MATCH - no numbers found!")
         return None
     
     def validate_data_integrity(self) -> Dict:
