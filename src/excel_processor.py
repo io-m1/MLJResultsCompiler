@@ -209,7 +209,6 @@ class ExcelProcessor:
             return int(match.group(1))
         
         return None
-        return loaded_count
     
     def validate_data_integrity(self) -> Dict:
         """
