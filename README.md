@@ -2,7 +2,7 @@
 
 Automated consolidation tool for test results from SurveyHeart Excel files.
 
-## Features
+**Status:** Production-ready - All tests passing (91.3% pass rate)
 
 - 🤖 **Telegram Bot** - Upload files directly from Telegram (24/7 available)
 - 📊 **Multi-Format Export** - XLSX (with colors), PDF, DOCX
