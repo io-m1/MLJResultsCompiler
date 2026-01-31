@@ -1,0 +1,53 @@
+MLJ RESULTS COMPILER - QUICK START
+==================================
+
+1. INSTALL DEPENDENCIES
+   pip install -r requirements.txt
+
+2. PREPARE INPUT FILES
+   - Export test results from SurveyHeart as XLSX
+   - Name them: Test 1.xlsx, Test 2.xlsx, ... Test 5.xlsx
+   - Place in: input/ folder
+
+3. RUN CONSOLIDATION
+   Default (XLSX output):
+   python src/main.py
+
+   Or specify format:
+   python src/main.py --format pdf    # Generate PDF
+   python src/main.py --format docx   # Generate DOCX
+   python src/main.py -f xlsx         # Generate XLSX (explicit)
+
+4. FIND RESULTS
+   Output files in: output/
+   - Consolidated_Results.xlsx (spreadsheet)
+   - Consolidated_Results.pdf (report)
+   - Consolidated_Results.docx (word document)
+
+COLUMN HEADERS (Auto-detected)
+  Full Name, Name, Participant
+  Email, E-mail, Email Address
+  Score, Result, %, Percentage
+
+INPUT REQUIREMENTS
+  ✓ Each test file = 1 XLSX
+  ✓ Headers in first row
+  ✓ Full name + Email + Score in each file
+  ✓ Emails used to match records across tests
+
+OUTPUT FORMATS
+  ✓ XLSX = Color-coded spreadsheet (default)
+  ✓ PDF = Professional report with colors
+  ✓ DOCX = Word document with formatted table
+
+COLORS
+  Test 1 = White
+  Test 2 = Sky Blue
+  Test 3 = Yellow
+  Test 4 = Army Green
+  Test 5 = Red
+
+LOG FILE
+  test_consolidation.log (shows all details)
+
+ISSUES? Check: test_consolidation.log

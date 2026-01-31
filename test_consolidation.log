@@ -1,0 +1,22 @@
+2026-01-31 15:17:06,830 - INFO - ============================================================
+2026-01-31 15:17:06,830 - INFO - MLJ Results Compiler Starting
+2026-01-31 15:17:06,830 - INFO - Output format: XLSX
+2026-01-31 15:17:06,832 - INFO - ============================================================
+2026-01-31 15:17:06,832 - INFO - Loading test files from input directory...
+2026-01-31 15:17:06,832 - INFO - No test 1 file found
+2026-01-31 15:17:06,832 - INFO - No test 2 file found
+2026-01-31 15:17:06,832 - INFO - No test 3 file found
+2026-01-31 15:17:06,834 - INFO - No test 4 file found
+2026-01-31 15:17:06,834 - INFO - No test 5 file found
+2026-01-31 15:17:06,834 - ERROR - No test files found in input directory. Please place XLSX files there.
+2026-01-31 15:17:07,370 - INFO - ============================================================
+2026-01-31 15:17:07,370 - INFO - MLJ Results Compiler Starting
+2026-01-31 15:17:07,370 - INFO - Output format: PDF
+2026-01-31 15:17:07,370 - INFO - ============================================================
+2026-01-31 15:17:07,372 - INFO - Loading test files from input directory...
+2026-01-31 15:17:07,372 - INFO - No test 1 file found
+2026-01-31 15:17:07,372 - INFO - No test 2 file found
+2026-01-31 15:17:07,373 - INFO - No test 3 file found
+2026-01-31 15:17:07,373 - INFO - No test 4 file found
+2026-01-31 15:17:07,374 - INFO - No test 5 file found
+2026-01-31 15:17:07,374 - ERROR - No test files found in input directory. Please place XLSX files there.
