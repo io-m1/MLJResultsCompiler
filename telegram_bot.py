@@ -8,6 +8,7 @@ import os
 import logging
 import tempfile
 from pathlib import Path
+from typing import Dict
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -40,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 # Conversation states
 SELECTING_FORMAT = 1
+CONFIRMING_PREVIEW = 2
+SELECTING_OUTPUT_FORMAT = 3
 
 # Global session manager (persists across requests)
 session_manager = SessionManager()
@@ -220,8 +223,133 @@ I can help you consolidate test results from multiple Excel files.
         
         return SELECTING_FORMAT
     
+    @staticmethod
+    def _generate_preview(consolidated_data: Dict, max_rows: int = 10) -> str:
+        """Generate a text preview of consolidated results"""
+        if not consolidated_data:
+            return "❌ No data to preview"
+        
+        # Get summary stats
+        total_participants = len(consolidated_data)
+        test_nums = set()
+        for data in consolidated_data.values():
+            for key in data.keys():
+                if key.startswith('test_') and key.endswith('_score'):
+                    test_nums.add(int(key.split('_')[1]))
+        
+        test_nums = sorted(test_nums)
+        
+        # Build preview text
+        preview = f"""
+📊 **CONSOLIDATION PREVIEW**
+
+📈 **Summary:**
+• Total Participants: {total_participants}
+• Tests Consolidated: {', '.join(f'Test {t}' for t in test_nums)}
+
+📋 **First {min(max_rows, total_participants)} Records:**
+"""
+        
+        # Add sample rows
+        for idx, (email, data) in enumerate(consolidated_data.items()):
+            if idx >= max_rows:
+                break
+            
+            name = data['name']
+            scores = []
+            for test_num in test_nums:
+                score = data.get(f'test_{test_num}_score')
+                if score is not None:
+                    scores.append(f"T{test_num}:{score}")
+                else:
+                    scores.append(f"T{test_num}:—")
+            
+            score_str = " | ".join(scores)
+            preview += f"\n{idx+1}. {name} ({email})\n   {score_str}"
+        
+        # Show if there are more
+        if len(consolidated_data) > max_rows:
+            preview += f"\n\n... and {len(consolidated_data) - max_rows} more participants"
+        
+        preview += "\n\n✅ **Look correct?**"
+        return preview
+    
+    async def show_consolidation_preview(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Show preview of consolidated data before downloading"""
+        user_id = update.effective_user.id
+        
+        # Get or create consolidated data from context
+        if 'consolidated_data' not in context.user_data:
+            await update.message.reply_text("❌ No consolidation in progress")
+            return ConversationHandler.END
+        
+        consolidated_data = context.user_data['consolidated_data']
+        preview = self._generate_preview(consolidated_data)
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
+                InlineKeyboardButton("❓ Show Full Data", callback_data='preview_full'),
+            ],
+            [
+                InlineKeyboardButton("❌ Cancel", callback_data='preview_cancel'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            preview,
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+        
+        return CONFIRMING_PREVIEW
+    
+    async def handle_preview_action(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle user action on preview (confirm, show more, or cancel)"""
+        query = update.callback_query
+        user_id = update.effective_user.id
+        await query.answer()
+        
+        action = query.data.split('_')[1]  # confirm, full, or cancel
+        
+        if action == 'cancel':
+            await query.edit_message_text("❌ Operation cancelled")
+            return ConversationHandler.END
+        
+        elif action == 'full':
+            # Show full data preview
+            consolidated_data = context.user_data.get('consolidated_data', {})
+            full_preview = self._generate_preview(consolidated_data, max_rows=999)
+            await query.edit_message_text(full_preview, parse_mode="Markdown")
+            return CONFIRMING_PREVIEW
+        
+        elif action == 'confirm':
+            # User confirmed, show format selection
+            keyboard = [
+                [
+                    InlineKeyboardButton("📊 Excel (XLSX)", callback_data='format_xlsx'),
+                    InlineKeyboardButton("📄 PDF Report", callback_data='format_pdf'),
+                ],
+                [
+                    InlineKeyboardButton("📝 Word (DOCX)", callback_data='format_docx'),
+                ],
+                [
+                    InlineKeyboardButton("❌ Cancel", callback_data='format_cancel'),
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                "📋 Great! Choose your output format:",
+                reply_markup=reply_markup
+            )
+            return SELECTING_OUTPUT_FORMAT
+        
+        return CONFIRMING_PREVIEW
+    
     async def format_selected(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle format selection - consolidate and export"""
+        """Handle format selection - consolidate and show preview"""
         query = update.callback_query
         user_id = update.effective_user.id
         await query.answer()
@@ -278,7 +406,69 @@ I can help you consolidate test results from multiple Excel files.
                 self.cleanup_session(user_id)
                 return ConversationHandler.END
             
-            # Save in selected format
+            # Store consolidated data and format choice for later use
+            context.user_data['consolidated_data'] = consolidated_data
+            context.user_data['processor'] = processor
+            context.user_data['output_dir'] = str(output_dir)
+            context.user_data['format_choice'] = format_choice
+            
+            # Show preview before download
+            preview = self._generate_preview(consolidated_data)
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
+                    InlineKeyboardButton("❓ Show Full Data", callback_data='preview_full'),
+                ],
+                [
+                    InlineKeyboardButton("❌ Cancel", callback_data='preview_cancel'),
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                preview,
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+            
+            return CONFIRMING_PREVIEW
+            
+        except Exception as e:
+            logger.error(f"Error processing files for user {user_id}: {str(e)}")
+            await query.edit_message_text(
+                f"❌ Error: {str(e)}\n\nPlease try again or contact support."
+            )
+            self.cleanup_session(user_id)
+            return ConversationHandler.END
+    
+    async def format_confirmed(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle format selection after preview is confirmed"""
+        query = update.callback_query
+        user_id = update.effective_user.id
+        await query.answer()
+        
+        format_choice = query.data.split('_')[1]  # Extract 'xlsx', 'pdf', or 'docx'
+        
+        if format_choice == 'cancel':
+            await query.edit_message_text("❌ Operation cancelled")
+            return ConversationHandler.END
+        
+        try:
+            consolidated_data = context.user_data.get('consolidated_data', {})
+            processor = context.user_data.get('processor')
+            output_dir = Path(context.user_data.get('output_dir', tempfile.gettempdir()))
+            
+            if not consolidated_data or not processor:
+                await query.edit_message_text("❌ Session expired. Please start over.")
+                return ConversationHandler.END
+            
+            await query.edit_message_text(
+                "⏳ Generating file...\n"
+                f"Converting to {format_choice.upper()}...",
+                parse_mode="Markdown"
+            )
+            
+            # Generate file in selected format
             if format_choice == 'xlsx':
                 output_file = output_dir / 'Consolidated_Results.xlsx'
                 processor.save_consolidated_file(consolidated_data, output_file.name)
@@ -292,7 +482,7 @@ I can help you consolidate test results from multiple Excel files.
             # Send file back
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"✅ Results consolidated!\n📊 {len(consolidated_data)} participants processed"
+                text=f"✅ File ready!\n📊 {len(consolidated_data)} participants\n📝 Format: {format_choice.upper()}"
             )
             
             with open(output_file, 'rb') as f:
@@ -313,7 +503,7 @@ I can help you consolidate test results from multiple Excel files.
             return ConversationHandler.END
             
         except Exception as e:
-            logger.error(f"Error processing files for user {user_id}: {str(e)}")
+            logger.error(f"Error generating file for user {user_id}: {str(e)}")
             await query.edit_message_text(
                 f"❌ Error: {str(e)}\n\nPlease try again or contact support."
             )
@@ -375,6 +565,12 @@ def build_application(token: str) -> Application:
             SELECTING_FORMAT: [
                 MessageHandler(filters.Document.FileExtension("xlsx"), handler.handle_document),
                 CallbackQueryHandler(handler.format_selected),
+            ],
+            CONFIRMING_PREVIEW: [
+                CallbackQueryHandler(handler.handle_preview_action),
+            ],
+            SELECTING_OUTPUT_FORMAT: [
+                CallbackQueryHandler(handler.format_confirmed),
             ],
         },
         fallbacks=[
