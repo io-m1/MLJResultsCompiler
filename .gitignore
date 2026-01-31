@@ -23,9 +23,36 @@ build/
 # Logs
 *.log
 test_consolidation.log
+test_scalability.log
 
 # Secrets
 .env
+
+# Deprecated/Test files (kept locally but not in repo)
+results_compiler_bot.py
+integration.py
+data_validator.py
+generate_sample_data.py
+sample_data_generator.py
+test_collation_automation.py
+test_scalability.py
+mlj_test_automation_suite.py
+verify_architecture.py
+test_results.json
+
+# Deprecated documentation
+00_START_HERE.md
+BOT_QUICK_START_GUIDE.md
+FILE_INVENTORY.md
+IMPLEMENTATION_COMPLETE.md
+IMPLEMENTATION_STATUS_V2.md
+PRODUCTION_READY.md
+SETUP_CHECK.md
+SYSTEM_CONFIGURATION_COMPLETE.md
+TEST_EXECUTION_GUIDE.md
+TEST_PLAN.md
+FINAL_SUMMARY.md
+setup.sh
 
 # OS
 .DS_Store
