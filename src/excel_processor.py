@@ -163,19 +163,21 @@ class ExcelProcessor:
         
         consolidated = {}
         
-        # Iterate through Test 1 participants
+        # Iterate through Test 1 participants ONLY (primary source)
         for email, data in self.test_data[1].items():
             consolidated[email] = {
                 'name': data['name'],
                 'test_1_score': data['score']
             }
             
-            # Add scores from all other tests dynamically
+            # Add scores from all other tests dynamically by matching email
             for test_num in sorted(self.test_data.keys()):
                 if test_num != 1:
+                    # Only add if email matches in that test (don't copy Test 1 score)
                     if email in self.test_data[test_num]:
                         consolidated[email][f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
                     else:
+                        # Explicitly set as None if not found
                         consolidated[email][f'test_{test_num}_score'] = None
         
         # Sort by name
