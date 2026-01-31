@@ -136,11 +136,22 @@ class ExcelProcessor:
         """
         loaded_count = 0
         
+        logger.info(f"=== LOAD_ALL_TESTS STARTING ===")
+        logger.info(f"Input directory: {self.input_dir}")
+        logger.info(f"Directory exists: {self.input_dir.exists()}")
+        
+        # List ALL files in directory first
+        if self.input_dir.exists():
+            all_files = list(self.input_dir.iterdir())
+            logger.info(f"ALL FILES IN DIRECTORY ({len(all_files)} total):")
+            for f in sorted(all_files):
+                logger.info(f"  {f.name} (is_file: {f.is_file()})")
+        
         # Find all XLSX files and extract test numbers
         all_xlsx_files = sorted(self.input_dir.glob("*.xlsx"))
         test_nums = set()
         
-        logger.info(f"Scanning {len(all_xlsx_files)} files in {self.input_dir}")
+        logger.info(f"Scanning {len(all_xlsx_files)} XLSX files in {self.input_dir}")
         logger.info(f"Files in order: {[f.name for f in all_xlsx_files]}")
         
         # DEBUG: Show extraction for each file
