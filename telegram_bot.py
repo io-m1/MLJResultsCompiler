@@ -132,6 +132,10 @@ I can help you consolidate test results from multiple Excel files.
             file_path = temp_dir / document.file_name
             await file.download_to_drive(file_path)
             
+            logger.info(f"USER {user_id}: Received file: {document.file_name}")
+            logger.info(f"USER {user_id}: Saved to: {file_path}")
+            logger.info(f"USER {user_id}: Temp dir now contains: {[f.name for f in temp_dir.glob('*.xlsx')]}")
+            
             # Detect test number from filename (Test 1, Test 2, etc.)
             test_num = self._extract_test_number(document.file_name)
             
