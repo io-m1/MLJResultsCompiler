@@ -9,11 +9,21 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
-import pandas as pd
-import numpy as np
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Make pandas/numpy imports lazy - only import when needed
+# This allows the bot to run even if pandas isn't immediately available
+try:
+    import pandas as pd
+    import numpy as np
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    pd = None
+    np = None
+    logger.warning("pandas/numpy not available - agent optimization features will be limited")
 
 
 class AgentStatus(Enum):
