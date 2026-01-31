@@ -116,6 +116,7 @@ I can help you consolidate test results from multiple Excel files.
         
         try:
             document = update.message.document
+            logger.info(f"USER {user_id}: Document received: {document.file_name}")
             
             if not document.file_name.lower().endswith('.xlsx'):
                 await update.message.reply_text(
@@ -128,16 +129,32 @@ I can help you consolidate test results from multiple Excel files.
             temp_dir = Path(session['temp_dir'])
             
             # Download file
-            file = await context.bot.get_file(document.file_id)
-            file_path = temp_dir / document.file_name
-            await file.download_to_drive(file_path)
+            try:
+                file = await context.bot.get_file(document.file_id)
+                file_path = temp_dir / document.file_name
+                await file.download_to_drive(file_path)
+                logger.info(f"USER {user_id}: File downloaded successfully to {file_path}")
+            except Exception as e:
+                logger.error(f"USER {user_id}: Failed to download file: {e}", exc_info=True)
+                await update.message.reply_text(
+                    f"❌ Failed to download file: {str(e)}"
+                )
+                return SELECTING_FORMAT
             
             logger.info(f"USER {user_id}: Received file: {document.file_name}")
             logger.info(f"USER {user_id}: Saved to: {file_path}")
             logger.info(f"USER {user_id}: Temp dir now contains: {[f.name for f in temp_dir.glob('*.xlsx')]}")
             
             # Detect test number from filename (Test 1, Test 2, etc.)
-            test_num = self._extract_test_number(document.file_name)
+            try:
+                test_num = self._extract_test_number(document.file_name)
+                logger.info(f"USER {user_id}: Extracted test number: {test_num}")
+            except Exception as e:
+                logger.error(f"USER {user_id}: Error extracting test number: {e}", exc_info=True)
+                await update.message.reply_text(
+                    f"❌ Error processing filename: {str(e)}"
+                )
+                return SELECTING_FORMAT
             
             if test_num is None:
                 await update.message.reply_text(
@@ -152,28 +169,48 @@ I can help you consolidate test results from multiple Excel files.
                 return SELECTING_FORMAT
             
             # Add file to session
-            summary = session_manager.add_file(user_id, str(file_path), test_num)
+            try:
+                summary = session_manager.add_file(user_id, str(file_path), test_num)
+                logger.info(f"USER {user_id}: Added Test {test_num} to session")
+            except Exception as e:
+                logger.error(f"USER {user_id}: Error adding file to session: {e}", exc_info=True)
+                await update.message.reply_text(
+                    f"❌ Error processing file: {str(e)}"
+                )
+                return SELECTING_FORMAT
             
             # Send status update
-            status_msg = session_manager.format_status_message(user_id)
-            await update.message.reply_text(status_msg, parse_mode="Markdown")
+            try:
+                status_msg = session_manager.format_status_message(user_id)
+                await update.message.reply_text(status_msg, parse_mode="Markdown")
+                logger.info(f"USER {user_id}: Sent status message")
+            except Exception as e:
+                logger.error(f"USER {user_id}: Error sending status: {e}", exc_info=True)
             
             # Agent reasoning: What's next?
-            next_action = WorkflowAgent.get_next_action(session_manager.get_session(user_id))
-            suggestion = WorkflowAgent.format_suggestion(next_action)
-            
-            await update.message.reply_text(
-                f"ℹ️ {suggestion}\n\n"
-                f"🔹 Send more files or use /consolidate to process"
-            )
+            try:
+                next_action = WorkflowAgent.get_next_action(session_manager.get_session(user_id))
+                suggestion = WorkflowAgent.format_suggestion(next_action)
+                
+                await update.message.reply_text(
+                    f"ℹ️ {suggestion}\n\n"
+                    f"🔹 Send more files or use /consolidate to process"
+                )
+                logger.info(f"USER {user_id}: Sent next action suggestion")
+            except Exception as e:
+                logger.error(f"USER {user_id}: Error sending suggestion: {e}", exc_info=True)
             
             return SELECTING_FORMAT
             
         except Exception as e:
-            logger.error(f"Error handling document: {e}")
-            await update.message.reply_text(
-                "❌ Error processing file. Please try again."
-            )
+            logger.error(f"USER {user_id}: Unexpected error in handle_document: {e}", exc_info=True)
+            try:
+                await update.message.reply_text(
+                    f"❌ Unexpected error: {str(e)}\n\n"
+                    f"Please try again or contact support."
+                )
+            except Exception as reply_error:
+                logger.error(f"USER {user_id}: Failed to send error message: {reply_error}")
             return SELECTING_FORMAT
     
     @staticmethod
@@ -440,14 +477,23 @@ I can help you consolidate test results from multiple Excel files.
             logger.info(f"User {user_id}: Processing files from {input_dir}")
             logger.info(f"Uploaded files dict: {uploaded_files}")
             
-            processor = ExcelProcessor(str(input_dir), str(output_dir))
+            try:
+                processor = ExcelProcessor(str(input_dir), str(output_dir))
+                logger.info(f"User {user_id}: Created ExcelProcessor")
+            except Exception as e:
+                logger.error(f"User {user_id}: Failed to create ExcelProcessor: {e}", exc_info=True)
+                raise
             
             # Load uploaded files dynamically (detects max test number)
-            loaded = processor.load_all_tests()
-            logger.info(f"User {user_id}: Successfully loaded {loaded} test files")
-            logger.info(f"Loaded test numbers: {sorted(processor.test_data.keys())}")
-            for test_num, data in processor.test_data.items():
-                logger.info(f"  Test {test_num}: {len(data)} participants - {list(data.keys())}")
+            try:
+                loaded = processor.load_all_tests()
+                logger.info(f"User {user_id}: Successfully loaded {loaded} test files")
+                logger.info(f"Loaded test numbers: {sorted(processor.test_data.keys())}")
+                for test_num, data in processor.test_data.items():
+                    logger.info(f"  Test {test_num}: {len(data)} participants - {list(data.keys())}")
+            except Exception as e:
+                logger.error(f"User {user_id}: Failed to load tests: {e}", exc_info=True)
+                raise
             
             if loaded == 0:
                 logger.error(f"User {user_id}: No valid test files found in {input_dir}")
