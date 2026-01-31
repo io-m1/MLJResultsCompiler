@@ -134,8 +134,13 @@ I can help you consolidate test results from multiple Excel files.
             
             if test_num is None:
                 await update.message.reply_text(
-                    "⚠️ Could not detect test number from filename.\n"
-                    "Use format: 'Test 1.xlsx', 'Test 2.xlsx', etc."
+                    "⚠️ **Could not detect test number from this filename**\n\n"
+                    "📝 **Accepted formats:**\n"
+                    "✅ 'Test 1.xlsx', 'test 1.xlsx', 'Test1.xlsx'\n"
+                    "✅ '1.xlsx', 'result_1.xlsx', 'exam(1).xlsx'\n\n"
+                    "🔹 The file must contain at least one number (1-9).\n"
+                    "Please rename and try again.",
+                    parse_mode="Markdown"
                 )
                 return SELECTING_FORMAT
             
@@ -166,10 +171,31 @@ I can help you consolidate test results from multiple Excel files.
     
     @staticmethod
     def _extract_test_number(filename: str) -> int:
-        """Extract test number from filename (e.g., 'Test 1.xlsx' -> 1)"""
+        """
+        Extract test number from filename.
+        Supports multiple formats:
+        - 'Test 1.xlsx', 'test 1.xlsx', 'Test1.xlsx'
+        - '1.xlsx', 'result_1.xlsx', 'exam(1).xlsx'
+        - Any filename with a number in it
+        """
         import re
-        match = re.search(r'[Tt]est\s*(\d+)', filename)
-        return int(match.group(1)) if match else None
+        
+        # Remove extension to focus on the name part
+        name_without_ext = filename.rsplit('.', 1)[0] if '.' in filename else filename
+        
+        # Try 1: Look for "Test N" or "test N" format first (preferred)
+        match = re.search(r'[Tt]est\s*(\d+)', name_without_ext)
+        if match:
+            return int(match.group(1))
+        
+        # Try 2: Look for any number in the filename (if no "Test" prefix)
+        # This handles: "1.xlsx", "result_1", "exam(1)", etc.
+        match = re.search(r'(\d+)', name_without_ext)
+        if match:
+            return int(match.group(1))
+        
+        # No number found
+        return None
     
     async def show_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show format selection buttons"""
