@@ -290,34 +290,37 @@ class ExcelProcessor:
         Consolidate results from all tests into a single dataset dynamically
         
         Returns:
-            Dict: Consolidated data {email: {name, test_1_score, test_2_score, ...}}
+            Dict: Consolidated data {email: {name, test_N_score, ...}}
         """
         if not self.test_data:
             logger.warning("No test data loaded")
             return {}
         
-        # Use Test 1 as base
-        if 1 not in self.test_data:
-            logger.error("Test 1 data is required as the base")
+        # Use the FIRST available test as base (not hardcoded Test 1)
+        available_tests = sorted(self.test_data.keys())
+        if not available_tests:
+            logger.error("No test data available for consolidation")
             return {}
         
+        base_test = available_tests[0]
+        logger.info(f"Using Test {base_test} as base for participant list")
         logger.info(f"Starting consolidation with {len(self.test_data)} test datasets")
         for test_num in sorted(self.test_data.keys()):
             logger.info(f"  Test {test_num}: {len(self.test_data[test_num])} participants")
         
         consolidated = {}
         
-        # Iterate through Test 1 participants ONLY (primary source)
-        for email, data in self.test_data[1].items():
+        # Iterate through base test participants (primary source)
+        for email, data in self.test_data[base_test].items():
             consolidated[email] = {
                 'name': data['name'],
-                'test_1_score': data['score']
+                f'test_{base_test}_score': data['score']
             }
             
             # Add scores from all other tests dynamically by matching email
             for test_num in sorted(self.test_data.keys()):
-                if test_num != 1:
-                    # Only add if email matches in that test (don't copy Test 1 score)
+                if test_num != base_test:
+                    # Only add if email matches in that test
                     if email in self.test_data[test_num]:
                         score = self.test_data[test_num][email]['score']
                         consolidated[email][f'test_{test_num}_score'] = score

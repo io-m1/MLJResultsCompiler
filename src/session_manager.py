@@ -136,10 +136,10 @@ class WorkflowAgent:
     @staticmethod
     def should_consolidate(session: Dict) -> bool:
         """Agentic reasoning: Should consolidation happen?"""
-        # Only consolidate if:
+        # Consolidation is possible if:
         # 1. User explicitly requests it (handled by command)
-        # 2. Test 1 exists (required base)
-        return 1 in session['uploaded_files']
+        # 2. At least one test file is uploaded
+        return len(session['uploaded_files']) > 0
     
     @staticmethod
     def get_next_action(session: Dict) -> str:

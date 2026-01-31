@@ -500,13 +500,14 @@ I can help you consolidate test results from multiple Excel files.
                 
                 # Delete text message and send photo with buttons
                 await query.delete_message()
-                await context.bot.send_photo(
-                    chat_id=update.effective_chat.id,
-                    photo=open(preview_image_path, 'rb'),
-                    caption=caption,
-                    reply_markup=reply_markup,
-                    parse_mode="Markdown"
-                )
+                with open(preview_image_path, 'rb') as photo_file:
+                    await context.bot.send_photo(
+                        chat_id=update.effective_chat.id,
+                        photo=photo_file,
+                        caption=caption,
+                        reply_markup=reply_markup,
+                        parse_mode="Markdown"
+                    )
             else:
                 # Fallback to text preview if image generation failed
                 logger.warning("Preview image generation failed, falling back to text preview")
@@ -615,20 +616,10 @@ I can help you consolidate test results from multiple Excel files.
         session = session_manager.get_session(user_id)
         uploaded_files = session_manager.get_files_for_consolidation(user_id)
         
-        # Check if consolidation is possible
-        if not WorkflowAgent.should_consolidate(session):
-            await update.message.reply_text(
-                "⚠️ **Cannot consolidate yet**\n\n"
-                "Test 1 file is required as the base.\n"
-                "Please upload Test 1 first.",
-                parse_mode="Markdown"
-            )
-            return SELECTING_FORMAT
-        
         if not uploaded_files:
             await update.message.reply_text(
                 "📁 No files uploaded yet.\n"
-                "Send files to get started."
+                "Please send at least one test file to get started."
             )
             return SELECTING_FORMAT
         
