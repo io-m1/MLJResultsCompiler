@@ -1,6 +1,9 @@
 openpyxl==3.1.5
-pandas==2.0.3
+# pandas 2.2.x has prebuilt wheels for Python 3.13 (avoids source build failures)
+pandas==2.2.3
 python-docx==0.8.11
 reportlab==4.0.9
 python-telegram-bot==20.3
 python-dotenv==1.0.0
+fastapi==0.110.0
+uvicorn[standard]==0.23.2

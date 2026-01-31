@@ -23,7 +23,7 @@ from telegram.error import TelegramError
 from src.excel_processor import ExcelProcessor
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path='.env')
 
 # Setup logging
 logging.basicConfig(
@@ -290,19 +290,11 @@ I can help you consolidate test results from multiple Excel files.
                 shutil.rmtree(temp_dir, ignore_errors=True)
             del user_sessions[user_id]
 
-def main():
-    """Start the Telegram bot"""
-    token = os.getenv('TELEGRAM_BOT_TOKEN')
-    
-    if not token:
-        logger.error("TELEGRAM_BOT_TOKEN not found in environment variables")
-        raise ValueError("Please set TELEGRAM_BOT_TOKEN in .env file")
-    
-    # Create the Application
+def build_application(token: str) -> Application:
+    """Construct the PTB Application with handlers registered."""
     application = Application.builder().token(token).build()
     handler = TelegramBotHandler(token)
-    
-    # Create conversation handler
+
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", handler.start),
@@ -318,15 +310,27 @@ def main():
             CommandHandler("cancel", handler.cancel),
         ],
     )
-    
-    # Add handlers
+
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("help", handler.help_command))
     application.add_handler(CommandHandler("start", handler.start))
-    
-    # Start the bot
-    logger.info("Starting MLJ Results Compiler Telegram Bot")
+
+    return application
+
+
+def main():
+    """Start the Telegram bot using long polling (local/dev)."""
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+
+    if not token:
+        logger.error("TELEGRAM_BOT_TOKEN not found in environment variables")
+        raise ValueError("Please set TELEGRAM_BOT_TOKEN in .env file")
+
+    application = build_application(token)
+
+    logger.info("Starting MLJ Results Compiler Telegram Bot (polling)")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()

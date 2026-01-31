@@ -18,8 +18,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
-from validators import clean_name, clean_email, parse_score, validate_row_data
-from color_config import get_fill_for_test, TEST_COLORS
+from src.validators import clean_name, clean_email, parse_score, validate_row_data
+from src.color_config import get_fill_for_test, TEST_COLORS
 
 logger = logging.getLogger(__name__)
 

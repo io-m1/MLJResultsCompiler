@@ -24,6 +24,9 @@ build/
 *.log
 test_consolidation.log
 
+# Secrets
+.env
+
 # OS
 .DS_Store
 Thumbs.db
