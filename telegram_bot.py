@@ -441,6 +441,9 @@ I can help you consolidate test results from multiple Excel files.
             # Load uploaded files dynamically (detects max test number)
             loaded = processor.load_all_tests()
             logger.info(f"User {user_id}: Successfully loaded {loaded} test files")
+            logger.info(f"Loaded test numbers: {sorted(processor.test_data.keys())}")
+            for test_num, data in processor.test_data.items():
+                logger.info(f"  Test {test_num}: {len(data)} participants - {list(data.keys())}")
             
             if loaded == 0:
                 logger.error(f"User {user_id}: No valid test files found in {input_dir}")
@@ -463,8 +466,19 @@ I can help you consolidate test results from multiple Excel files.
             
             # Consolidate
             consolidated_data = processor.consolidate_results()
+            logger.info(f"User {user_id}: Consolidation returned {len(consolidated_data)} participants")
+            if consolidated_data:
+                logger.info(f"Consolidated participants: {list(consolidated_data.keys())[:5]}...")  # First 5
+                first_email = list(consolidated_data.keys())[0]
+                first_data = consolidated_data[first_email]
+                logger.info(f"First participant {first_email}: {first_data}")
             
             if not consolidated_data:
+                logger.error(f"User {user_id}: Consolidation failed - no data returned")
+                logger.error(f"Processor test_data keys: {list(processor.test_data.keys())}")
+                for test_num, data in processor.test_data.items():
+                    logger.error(f"  Test {test_num}: {len(data)} participants")
+                
                 await query.edit_message_text(
                     "❌ Failed to consolidate results"
                 )
