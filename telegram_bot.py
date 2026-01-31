@@ -23,7 +23,17 @@ from telegram.ext import (
 from telegram.error import TelegramError
 
 from src.excel_processor import ExcelProcessor
-from src.session_manager import SessionManager, WorkflowAgent
+from src.session_manager import SessionManager, WorkflowAgent, ConversationalSession
+# Import conversational components (with fallback if not available)
+try:
+    from src.intent_engine import IntentEngine
+    from src.document_parser import UniversalDocumentParser
+    from src.agent_router import AgentRouter
+    from config import ConversationalConfig
+    CONVERSATIONAL_ENABLED = True
+except ImportError as e:
+    logger.warning(f"Conversational features not available: {e}")
+    CONVERSATIONAL_ENABLED = False
 
 # Load environment variables
 load_dotenv(dotenv_path='.env')
@@ -53,6 +63,158 @@ class TelegramBotHandler:
     def __init__(self, token):
         self.token = token
         self.bot_token = token
+        
+        # Initialize conversational components if available
+        if CONVERSATIONAL_ENABLED:
+            try:
+                self.intent_engine = IntentEngine()
+                self.document_parser = UniversalDocumentParser()
+                self.agent_router = AgentRouter()
+                self.conversational_config = ConversationalConfig()
+                logger.info("Conversational intelligence enabled")
+            except Exception as e:
+                logger.warning(f"Could not initialize conversational features: {e}")
+                self.intent_engine = None
+                self.document_parser = None
+                self.agent_router = None
+        else:
+            self.intent_engine = None
+            self.document_parser = None
+            self.agent_router = None
+    
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """
+        Handle natural language text messages
+        Detects user intent and provides contextual responses
+        """
+        if not update.message or not update.message.text:
+            return
+        
+        user_id = update.effective_user.id
+        message_text = update.message.text
+        
+        # Skip if it's a command (starts with /)
+        if message_text.startswith('/'):
+            return
+        
+        logger.info(f"USER {user_id}: Received message: {message_text}")
+        
+        # If conversational features are enabled, use intent detection
+        if self.intent_engine:
+            try:
+                # Create conversational session
+                conv_session = ConversationalSession(session_manager, user_id)
+                conv_session.add_message(message_text, role='user')
+                
+                # Detect intent
+                intent_result = self.intent_engine.detect_intent(message_text)
+                intent = intent_result['intent']
+                confidence = intent_result['confidence']
+                
+                logger.info(f"USER {user_id}: Detected intent: {intent} (confidence: {confidence:.2%})")
+                
+                # Update session with detected intent
+                if confidence >= 0.5:
+                    conv_session.update_intent(intent, confidence)
+                
+                # Generate contextual response
+                response = self._generate_contextual_response(intent, intent_result, conv_session)
+                
+                await update.message.reply_text(response, parse_mode="Markdown")
+                conv_session.add_message(response, role='bot')
+                
+            except Exception as e:
+                logger.error(f"USER {user_id}: Error in conversational handling: {e}")
+                await update.message.reply_text(
+                    "I can help you consolidate test results! 📊\n\n"
+                    "Just upload your Excel test files and I'll process them."
+                )
+        else:
+            # Fallback: simple response
+            await update.message.reply_text(
+                "👋 I can help you consolidate test results!\n\n"
+                "📤 Send me your Excel test files (Test 1.xlsx, Test 2.xlsx, etc.)\n"
+                "Then use /consolidate to process them."
+            )
+    
+    def _generate_contextual_response(self, intent: str, intent_result: dict, 
+                                     conv_session: ConversationalSession) -> str:
+        """
+        Generate context-aware response based on detected intent
+        
+        Args:
+            intent: Detected intent name
+            intent_result: Full intent detection result
+            conv_session: Conversational session
+            
+        Returns:
+            Response message text
+        """
+        # Get current session state
+        doc_count = conv_session.get_document_count()
+        
+        if intent == 'test_consolidation':
+            if doc_count == 0:
+                return (
+                    "📊 **Test Consolidation Mode**\n\n"
+                    "I'll help you consolidate test results!\n\n"
+                    "📤 Send me your Excel files:\n"
+                    "• Test 1.xlsx\n"
+                    "• Test 2.xlsx\n"
+                    "• Test 3.xlsx (and so on)\n\n"
+                    "I'll merge them by participant email."
+                )
+            else:
+                return (
+                    f"📊 **Test Consolidation in Progress**\n\n"
+                    f"✅ You've uploaded {doc_count} file(s)\n\n"
+                    f"You can:\n"
+                    f"• Upload more test files\n"
+                    f"• Use /consolidate to process now"
+                )
+        
+        elif intent == 'invoice_processing':
+            return (
+                "💰 **Invoice Processing**\n\n"
+                "This feature is coming soon! Currently, I specialize in test result consolidation.\n\n"
+                "📤 Send me test Excel files to get started."
+            )
+        
+        elif intent == 'image_extraction':
+            return (
+                "📸 **Image Text Extraction (OCR)**\n\n"
+                "This feature is coming soon! Currently, I work with Excel files.\n\n"
+                "📤 Send me test Excel files for consolidation."
+            )
+        
+        elif intent == 'table_merge' or intent == 'data_cleaning':
+            return (
+                f"🔧 **{intent.replace('_', ' ').title()}**\n\n"
+                f"This advanced feature is coming soon!\n\n"
+                f"Right now, I can consolidate test results from Excel files.\n"
+                f"📤 Send me your test files to get started!"
+            )
+        
+        elif intent == 'unknown':
+            suggestions = intent_result.get('suggestions', [])
+            response = "I'm here to help! 🤖\n\n"
+            if suggestions:
+                response += "\n".join(suggestions)
+            else:
+                response += (
+                    "I can help with:\n"
+                    "• Test result consolidation 📊\n"
+                    "• Merging Excel files by email\n"
+                    "• Creating color-coded reports\n\n"
+                    "Just upload your test files to get started!"
+                )
+            return response
+        
+        # Default response
+        return (
+            "I understand you want help with test consolidation! 📊\n\n"
+            "Send me your Excel test files and I'll merge them for you."
+        )
         
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
@@ -750,6 +912,12 @@ def build_application(token: str) -> Application:
     application.add_handler(CommandHandler("consolidate", handler.consolidate_command))
     application.add_handler(CommandHandler("help", handler.help_command))
     application.add_handler(CommandHandler("start", handler.start))
+    
+    # Add text message handler for conversational mode (outside conversation flow)
+    # This handles natural language queries when not in active conversation
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handler.handle_message)
+    )
 
     return application
 
