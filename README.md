@@ -1,15 +1,25 @@
 # MLJ Results Compiler
 
-Automated consolidation tool for test results from SurveyHeart Excel files.
+Intelligent conversational document processing bot with advanced test consolidation capabilities.
 
 **Status:** Production-ready - All tests passing (91.3% pass rate)
 
+## 🌟 Features
+
+### Core Capabilities
 - 🤖 **Telegram Bot** - Upload files directly from Telegram (24/7 available)
-- 📊 **Multi-Format Export** - XLSX (with colors), PDF, DOCX
+- 💬 **Conversational AI** - Natural language understanding and intent detection
+- 📊 **Multi-Format Support** - Handle Excel, CSV, images, PDFs, and more
 - 📧 **Email Matching** - Automatically matches participants across tests
 - 🎨 **Color Coded** - Visual verification with test-specific colors
 - ✨ **Auto-Sorting** - Alphabetically organized results
 - ✅ **Data Validation** - Comprehensive validation and error reporting
+
+### Intelligent Processing
+- 🎯 **Intent Detection** - Understands what you want to do
+- 🔀 **Smart Routing** - Automatically selects the right processing agent
+- 📈 **Context Awareness** - Maintains conversation history for better responses
+- 🚀 **Multi-Agent System** - Specialized agents for different document types
 
 ## Test Color Scheme
 
@@ -27,11 +37,31 @@ Automated consolidation tool for test results from SurveyHeart Excel files.
 
 1. Find your bot on Telegram (search by username)
 2. Send `/start`
-3. Upload your test XLSX files
-4. Select output format
-5. Download results instantly!
+3. **NEW:** Just tell the bot what you want! Examples:
+   - "I want to consolidate test results"
+   - "Merge my Excel files"
+   - "Combine test 1, 2, and 3"
+4. Upload your test XLSX files
+5. Select output format
+6. Download results instantly!
 
-**Deploy bot:** See [TELEGRAM_BOT_SETUP.md](TELEGRAM_BOT_SETUP.md)
+### Conversational Commands 💬
+
+The bot now understands natural language! Try:
+- "Help me consolidate tests"
+- "I need to merge Excel files"
+- "Combine my test results"
+- "Process invoices" (coming soon)
+- "Extract text from images" (coming soon)
+
+### Traditional Commands
+
+- `/start` - Show welcome message
+- `/help` - Show help information
+- `/consolidate` - Process uploaded files
+- `/cancel` - Cancel current operation
+
+**Deploy bot:** See [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ### Option 2: Command Line
 
@@ -92,13 +122,45 @@ MLJResultsCompiler/
 │   ├── main.py              # CLI entry point
 │   ├── excel_processor.py    # Core processing
 │   ├── validators.py         # Data validation
-│   └── color_config.py       # Color definitions
+│   ├── color_config.py       # Color definitions
+│   ├── session_manager.py    # Session & conversation tracking
+│   ├── intent_engine.py      # Natural language understanding
+│   ├── document_parser.py    # Multi-format document parsing
+│   ├── agent_router.py       # Intelligent agent routing
+│   └── agents/               # Specialized processing agents
+│       ├── base_agent.py     # Base agent interface
+│       ├── test_compiler_agent.py  # Test consolidation
+│       ├── invoice_agent.py  # Invoice processing (coming soon)
+│       ├── ocr_agent.py      # Image OCR (coming soon)
+│       └── merger_agent.py   # Generic table merging (coming soon)
 ├── telegram_bot.py          # Telegram bot (for deployment)
-├── generate_sample_data.py   # Create test files
+├── config.py                # Configuration system
 ├── requirements.txt         # Python dependencies
 ├── .env.example            # Environment template
-├── TELEGRAM_BOT_SETUP.md   # Bot deployment guide
+├── DEPLOYMENT.md           # Deployment guide
 ├── Procfile                # Heroku deployment
 ├── runtime.txt             # Python version for Heroku
 └── README.md               # This file
 ```
+
+## Architecture
+
+### Conversational Intelligence
+
+The bot uses a multi-layer architecture:
+
+1. **Intent Engine** - Detects what users want to do from natural language
+2. **Document Parser** - Handles multiple file formats (Excel, PDF, images, etc.)
+3. **Agent Router** - Selects the appropriate processing agent
+4. **Specialized Agents** - Execute specific tasks (test compilation, OCR, etc.)
+5. **Session Manager** - Tracks conversation history and context
+
+### Backward Compatibility
+
+All existing functionality is preserved:
+- Original test consolidation workflow works exactly as before
+- Existing file processing maintains 100% compatibility
+- All configuration options remain unchanged
+- Traditional command-based interface still available
+
+The new conversational features are **additions** that enhance the bot without breaking existing functionality.

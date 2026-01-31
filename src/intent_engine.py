@@ -27,39 +27,41 @@ class IntentEngine:
     INTENTS = {
         'test_consolidation': {
             'keywords': ['merge tests', 'combine results', 'consolidate scores', 'test results', 
-                        'combine tests', 'merge scores', 'consolidate test', 'test consolidation'],
-            'patterns': [r'test\s+\d+', r'consolidate.*test', r'merge.*xlsx', r'combine.*excel'],
-            'confidence_threshold': 0.7
+                        'combine tests', 'merge scores', 'consolidate test', 'test consolidation',
+                        'consolidate', 'merge', 'combine', 'test', 'tests'],
+            'patterns': [r'test\s+\d+', r'consolidate.*test', r'merge.*xlsx', r'combine.*excel',
+                        r'test.*result', r'merge.*test'],
+            'confidence_threshold': 0.5
         },
         'invoice_processing': {
             'keywords': ['invoice', 'billing', 'payment', 'total cost', 'invoice total',
-                        'sum invoices', 'billing summary'],
-            'patterns': [r'invoice.*total', r'sum.*invoices?', r'billing.*summary'],
-            'confidence_threshold': 0.75
+                        'sum invoices', 'billing summary', 'invoices'],
+            'patterns': [r'invoice.*total', r'sum.*invoices?', r'billing.*summary', r'process.*invoice'],
+            'confidence_threshold': 0.5
         },
         'image_extraction': {
             'keywords': ['extract', 'ocr', 'read image', 'scan', 'photo', 'extract text',
-                        'read photo', 'scan document'],
-            'patterns': [r'extract.*image', r'read.*photo', r'ocr', r'scan.*text'],
-            'confidence_threshold': 0.8
+                        'read photo', 'scan document', 'image', 'picture'],
+            'patterns': [r'extract.*image', r'read.*photo', r'ocr', r'scan.*text', r'text.*image'],
+            'confidence_threshold': 0.5
         },
         'table_merge': {
             'keywords': ['combine tables', 'merge data', 'join', 'consolidate data',
-                        'merge tables', 'combine data', 'join columns'],
-            'patterns': [r'merge.*table', r'combine.*data', r'join.*column'],
-            'confidence_threshold': 0.7
+                        'merge tables', 'combine data', 'join columns', 'table'],
+            'patterns': [r'merge.*table', r'combine.*data', r'join.*column', r'table.*merge'],
+            'confidence_threshold': 0.5
         },
         'report_generation': {
             'keywords': ['create report', 'generate summary', 'make document', 'generate report',
-                        'create summary', 'make report'],
-            'patterns': [r'create.*report', r'generate.*summary', r'make.*document'],
-            'confidence_threshold': 0.75
+                        'create summary', 'make report', 'report', 'summary'],
+            'patterns': [r'create.*report', r'generate.*summary', r'make.*document', r'report.*generate'],
+            'confidence_threshold': 0.5
         },
         'data_cleaning': {
             'keywords': ['clean', 'fix', 'standardize', 'normalize', 'clean data',
-                        'fix format', 'standardize data'],
-            'patterns': [r'clean.*data', r'fix.*format', r'standardize', r'normalize'],
-            'confidence_threshold': 0.7
+                        'fix format', 'standardize data', 'cleaning'],
+            'patterns': [r'clean.*data', r'fix.*format', r'standardize', r'normalize', r'data.*clean'],
+            'confidence_threshold': 0.5
         }
     }
     
@@ -119,24 +121,33 @@ class IntentEngine:
     def _calculate_intent_score(self, message: str, intent_config: Dict) -> float:
         """Calculate score for a specific intent"""
         score = 0.0
-        matches = 0
-        total_checks = 0
         
         # Keyword matching (50% weight)
         keywords = intent_config['keywords']
+        keyword_matches = 0
         for keyword in keywords:
-            total_checks += 1
             if keyword.lower() in message:
-                matches += 1
-                score += 0.5 / len(keywords)
+                keyword_matches += 1
+        
+        if keywords:
+            score += 0.5 * (keyword_matches / len(keywords))
         
         # Pattern matching (50% weight)
         patterns = intent_config['patterns']
+        pattern_matches = 0
         for pattern in patterns:
-            total_checks += 1
             if re.search(pattern, message, re.IGNORECASE):
-                matches += 1
-                score += 0.5 / len(patterns)
+                pattern_matches += 1
+        
+        if patterns:
+            score += 0.5 * (pattern_matches / len(patterns))
+        
+        # Boost score if we have any matches
+        if keyword_matches > 0 or pattern_matches > 0:
+            # Give bonus for multiple matches
+            total_matches = keyword_matches + pattern_matches
+            bonus = min(0.3, total_matches * 0.1)
+            score += bonus
         
         return min(score, 1.0)
     
