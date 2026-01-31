@@ -4,12 +4,16 @@ import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 
 interface FileUploadProps {
-  onFilesSelected: (files: File[]) => void
+  onFilesSelected: (files: File[], uploadedIds: string[]) => void
   disabled?: boolean
+  onUploadStart?: () => void
+  onUploadError?: (error: string) => void
 }
 
-export default function FileUpload({ onFilesSelected, disabled }: FileUploadProps) {
+export default function FileUpload({ onFilesSelected, disabled, onUploadStart, onUploadError }: FileUploadProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({})
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const xlsFiles = acceptedFiles.filter((file) => file.name.endsWith('.xls'))
@@ -25,10 +29,45 @@ export default function FileUpload({ onFilesSelected, disabled }: FileUploadProp
     multiple: true,
   })
 
-  const handleUpload = () => {
-    if (selectedFiles.length > 0) {
-      onFilesSelected(selectedFiles)
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) return
+
+    setIsUploading(true)
+    onUploadStart?.()
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+      const formData = new FormData()
+      selectedFiles.forEach((file) => {
+        formData.append('files', file)
+      })
+
+      const response = await fetch(`${apiUrl}/api/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Upload failed')
+      }
+
+      const data = await response.json()
+      
+      if (!data.fileIds || data.fileIds.length === 0) {
+        throw new Error('No files were uploaded')
+      }
+
+      // Call parent with files and uploaded IDs
+      onFilesSelected(selectedFiles, data.fileIds)
       setSelectedFiles([])
+      setUploadProgress({})
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+      onUploadError?.(errorMessage)
+      console.error('Upload error:', error)
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -119,15 +158,22 @@ export default function FileUpload({ onFilesSelected, disabled }: FileUploadProp
           {/* Compile Button */}
           <button
             onClick={handleUpload}
-            disabled={disabled || selectedFiles.length === 0}
+            disabled={disabled || selectedFiles.length === 0 || isUploading}
             className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-2
               ${
-                disabled || selectedFiles.length === 0
+                disabled || selectedFiles.length === 0 || isUploading
                   ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                   : 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:shadow-xl hover:shadow-brand-primary/30 active:scale-95 transform'
               }`}
           >
-            {disabled ? (
+            {isUploading ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Uploading...
+              </>
+            ) : disabled ? (
               <>
                 <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
