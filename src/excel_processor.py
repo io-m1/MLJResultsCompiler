@@ -76,11 +76,21 @@ class ExcelProcessor:
             # Find column indices
             name_col = self.find_column_index(ws, ['Full Name', 'Name', 'Participant'])
             email_col = self.find_column_index(ws, ['Email', 'E-mail', 'Email Address'])
-            score_col = self.find_column_index(ws, ['Score', 'Result', '%', 'Percentage'])
+            
+            # For score, prioritize the column that matches this specific test
+            # e.g., for Test 2, look for "Test 2 Score" first
+            score_col = self.find_column_index(ws, [f'Test {test_number} Score', f'Test {test_number} Result'])
+            
+            # If not found, fall back to generic score columns
+            if not score_col:
+                score_col = self.find_column_index(ws, ['Score', 'Result', '%', 'Percentage'])
             
             if not all([name_col, email_col, score_col]):
                 logger.error(f"Could not find required columns in {filepath.name}")
+                logger.error(f"  Name col: {name_col}, Email col: {email_col}, Score col: {score_col}")
                 return False
+            
+            logger.info(f"Columns found - Name: {name_col}, Email: {email_col}, Score: {score_col}")
             
             # Extract data
             self.test_data[test_number] = {}
@@ -99,6 +109,9 @@ class ExcelProcessor:
                         'score': score
                     }
                     row_count += 1
+                    # Log first few records to verify correct file
+                    if row_count <= 3:
+                        logger.info(f"  Test {test_number} row {row_idx}: {full_name} = {score}")
                 else:
                     logger.warning(f"Row {row_idx} in test {test_number}: {error_msg}")
             
