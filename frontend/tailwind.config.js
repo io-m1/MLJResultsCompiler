@@ -8,19 +8,20 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        terminal: {
-          bg: '#0C0C0C',
-          text: '#CCCCCC',
-          green: '#0DBC79',
-          blue: '#3B78FF',
-          yellow: '#E5C07B',
-          red: '#E06C75',
+        brand: {
+          primary: '#0066cc',    /* Professional blue */
+          secondary: '#00a3e0',  /* Teal accent */
+          accent: '#ff6b35',     /* Warm accent */
         },
       },
       fontFamily: {
-        mono: ['Consolas', 'Monaco', 'Courier New', 'monospace'],
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+      },
+      backgroundImage: {
+        'gradient-primary': 'linear-gradient(135deg, #0066cc 0%, #00a3e0 100%)',
       },
     },
   },
   plugins: [],
 }
+
