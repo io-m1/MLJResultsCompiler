@@ -329,18 +329,25 @@ class ExcelProcessor:
             logger.warning("No test data loaded")
             return {}
         
-        # Use the FIRST available test as base (not hardcoded Test 1)
+        # PREFER Test 1 as base if available, otherwise use first available test
         available_tests = sorted(self.test_data.keys())
         if not available_tests:
             logger.error("No test data available for consolidation")
             return {}
         
-        base_test = available_tests[0]
+        # Prefer Test 1, fall back to first available
+        if 1 in available_tests:
+            base_test = 1
+            logger.info(f"Using Test 1 as base (preferred)")
+        else:
+            base_test = available_tests[0]
+            logger.info(f"Test 1 not found, using Test {base_test} as base (first available)")
+        
         logger.info(f"=== CONSOLIDATION STARTING ===")
         logger.info(f"test_data.keys() = {list(self.test_data.keys())}")
         logger.info(f"sorted(test_data.keys()) = {sorted(self.test_data.keys())}")
         logger.info(f"Available tests found: {available_tests}")
-        logger.info(f"Using Test {base_test} as base for participant list (FIRST in sorted order)")
+        logger.info(f"Using Test {base_test} as base for participant list")
         logger.info(f"All tests to consolidate: {sorted(self.test_data.keys())}")
         
         # CRITICAL DEBUG: Check if Test 1 exists
