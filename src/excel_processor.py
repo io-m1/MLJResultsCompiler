@@ -325,9 +325,17 @@ class ExcelProcessor:
         
         base_test = available_tests[0]
         logger.info(f"=== CONSOLIDATION STARTING ===")
+        logger.info(f"test_data.keys() = {list(self.test_data.keys())}")
+        logger.info(f"sorted(test_data.keys()) = {sorted(self.test_data.keys())}")
         logger.info(f"Available tests found: {available_tests}")
         logger.info(f"Using Test {base_test} as base for participant list (FIRST in sorted order)")
         logger.info(f"All tests to consolidate: {sorted(self.test_data.keys())}")
+        
+        # CRITICAL DEBUG: Check if Test 1 exists
+        if 1 in self.test_data:
+            logger.info(f"✓ Test 1 IS in test_data with {len(self.test_data[1])} participants")
+        else:
+            logger.error(f"✗ Test 1 IS NOT in test_data! Available tests: {list(self.test_data.keys())}")
         
         # Log ALL participants in ALL tests BEFORE consolidation with FULL DETAILS
         logger.info("PRE-CONSOLIDATION PARTICIPANT BREAKDOWN (DETAILED):")
