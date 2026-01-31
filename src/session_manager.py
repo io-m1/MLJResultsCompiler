@@ -64,7 +64,7 @@ class SessionManager:
             'tests_uploaded': uploaded,
             'count': len(uploaded),
             'messages': session['messages'],
-            'can_consolidate': 1 in uploaded,  # Test 1 must be present
+            'can_consolidate': len(uploaded) > 0,  # Can consolidate with any test file
             'state': self.determine_state(session)
         }
     
