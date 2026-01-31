@@ -1,0 +1,34 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+test_consolidation.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output files (user may want to keep, comment out if needed)
+output/*.xlsx
+output/*.pdf
+output/*.docx
