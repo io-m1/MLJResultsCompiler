@@ -189,9 +189,16 @@ class ExcelProcessor:
     
     def _find_test_file(self, test_num: int) -> Optional[Path]:
         """Find the file matching a specific test number"""
+        logger.info(f"_find_test_file: Looking for Test {test_num}")
+        files_checked = []
         for f in sorted(self.input_dir.glob("*.xlsx")):
-            if self._extract_test_number_from_file(f.name) == test_num:
+            extracted = self._extract_test_number_from_file(f.name)
+            files_checked.append((f.name, extracted))
+            if extracted == test_num:
+                logger.info(f"_find_test_file: Found Test {test_num} in file: {f.name}")
                 return f
+        
+        logger.error(f"_find_test_file: Test {test_num} NOT FOUND! Files checked: {files_checked}")
         return None
     
     @staticmethod
@@ -206,13 +213,18 @@ class ExcelProcessor:
         # Try 1: Look for "Test N" or "test N" format first
         match = re.search(r'[Tt]est\s*(\d+)', name_without_ext)
         if match:
-            return int(match.group(1))
+            result = int(match.group(1))
+            logger.debug(f"_extract_test_number: '{filename}' -> Test {result} (via 'Test N' pattern)")
+            return result
         
         # Try 2: Look for any number in the filename
         match = re.search(r'(\d+)', name_without_ext)
         if match:
-            return int(match.group(1))
+            result = int(match.group(1))
+            logger.debug(f"_extract_test_number: '{filename}' -> Test {result} (via number pattern)")
+            return result
         
+        logger.warning(f"_extract_test_number: '{filename}' -> No number found!")
         return None
     
     def validate_data_integrity(self) -> Dict:
