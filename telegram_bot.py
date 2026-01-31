@@ -1,6 +1,7 @@
 """
 MLJ Results Compiler - Telegram Bot
 Allows users to upload test files and get consolidated results via Telegram
+Session-aware, agentic workflow: collect files → consolidate on demand
 """
 
 import os
@@ -21,6 +22,7 @@ from telegram.ext import (
 from telegram.error import TelegramError
 
 from src.excel_processor import ExcelProcessor
+from src.session_manager import SessionManager, WorkflowAgent
 
 # Load environment variables
 load_dotenv(dotenv_path='.env')
@@ -39,8 +41,8 @@ logger = logging.getLogger(__name__)
 # Conversation states
 SELECTING_FORMAT = 1
 
-# User session storage
-user_sessions = {}
+# Global session manager (persists across requests)
+session_manager = SessionManager()
 
 class TelegramBotHandler:
     """Handles Telegram bot interactions"""
@@ -106,19 +108,10 @@ I can help you consolidate test results from multiple Excel files.
         await update.message.reply_text(help_text)
     
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle uploaded documents"""
+        """Handle uploaded documents - collect files without immediate processing"""
         user_id = update.effective_user.id
         
-        if user_id not in user_sessions:
-            user_sessions[user_id] = {
-                'files': [],
-                'temp_dir': tempfile.mkdtemp()
-            }
-        
-        session = user_sessions[user_id]
-        
         try:
-            # Get the file
             document = update.message.document
             
             if not document.file_name.lower().endswith('.xlsx'):
@@ -127,31 +120,56 @@ I can help you consolidate test results from multiple Excel files.
                 )
                 return SELECTING_FORMAT
             
+            # Get session and temp directory
+            session = session_manager.get_session(user_id)
+            temp_dir = Path(session['temp_dir'])
+            
             # Download file
             file = await context.bot.get_file(document.file_id)
-            file_path = Path(session['temp_dir']) / document.file_name
+            file_path = temp_dir / document.file_name
             await file.download_to_drive(file_path)
             
-            session['files'].append(str(file_path))
+            # Detect test number from filename (Test 1, Test 2, etc.)
+            test_num = self._extract_test_number(document.file_name)
+            
+            if test_num is None:
+                await update.message.reply_text(
+                    "⚠️ Could not detect test number from filename.\n"
+                    "Use format: 'Test 1.xlsx', 'Test 2.xlsx', etc."
+                )
+                return SELECTING_FORMAT
+            
+            # Add file to session
+            summary = session_manager.add_file(user_id, str(file_path), test_num)
+            
+            # Send status update
+            status_msg = session_manager.format_status_message(user_id)
+            await update.message.reply_text(status_msg, parse_mode="Markdown")
+            
+            # Agent reasoning: What's next?
+            next_action = WorkflowAgent.get_next_action(session_manager.get_session(user_id))
+            suggestion = WorkflowAgent.format_suggestion(next_action)
             
             await update.message.reply_text(
-                f"✅ File received: {document.file_name}\n"
-                f"📦 Total files: {len(session['files'])}\n\n"
-                f"📤 Send more files or click below to consolidate:"
+                f"ℹ️ {suggestion}\n\n"
+                f"🔹 Send more files or use /consolidate to process"
             )
-            
-            # Show format selection after first file
-            if len(session['files']) >= 1:
-                return await self.show_format_selection(update, context)
             
             return SELECTING_FORMAT
             
         except Exception as e:
-            logger.error(f"Error handling document for user {user_id}: {str(e)}")
+            logger.error(f"Error handling document: {e}")
             await update.message.reply_text(
-                f"❌ Error processing file: {str(e)}"
+                "❌ Error processing file. Please try again."
             )
             return SELECTING_FORMAT
+    
+    @staticmethod
+    def _extract_test_number(filename: str) -> int:
+        """Extract test number from filename (e.g., 'Test 1.xlsx' -> 1)"""
+        import re
+        match = re.search(r'[Tt]est\s*(\d+)', filename)
+        return int(match.group(1)) if match else None
     
     async def show_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Show format selection buttons"""
@@ -177,48 +195,52 @@ I can help you consolidate test results from multiple Excel files.
         return SELECTING_FORMAT
     
     async def format_selected(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle format selection"""
+        """Handle format selection - consolidate and export"""
         query = update.callback_query
         user_id = update.effective_user.id
         await query.answer()
         
-        if user_id not in user_sessions or not user_sessions[user_id]['files']:
+        # Get session
+        session = session_manager.get_session(user_id)
+        uploaded_files = session_manager.get_files_for_consolidation(user_id)
+        
+        if not uploaded_files:
             await query.edit_message_text(
                 "❌ No files found. Please upload files first with /start"
             )
             return ConversationHandler.END
         
-        session = user_sessions[user_id]
         format_choice = query.data.split('_')[1]  # Extract 'xlsx', 'pdf', or 'docx'
         
         if format_choice == 'cancel':
             await query.edit_message_text("❌ Operation cancelled")
-            self.cleanup_session(user_id)
+            session_manager.clear_session(user_id)
             return ConversationHandler.END
         
         try:
             await query.edit_message_text(
-                "⏳ Processing your files...\n"
-                "This may take a moment..."
+                "⏳ Consolidating files...\n"
+                "Merging all tests...",
+                parse_mode="Markdown"
             )
             
-            # Create processor with session temp directory
+            # Create processor with session files
             input_dir = Path(session['temp_dir'])
             output_dir = Path(tempfile.mkdtemp())
             
             processor = ExcelProcessor(str(input_dir), str(output_dir))
             
-            # Load uploaded files
-            loaded = processor.load_all_tests(max_tests=5)
+            # Load uploaded files dynamically (detects max test number)
+            loaded = processor.load_all_tests()
             
             if loaded == 0:
                 await query.edit_message_text(
                     "❌ No valid test files found. Please check your files."
                 )
-                self.cleanup_session(user_id)
+                session_manager.clear_session(user_id)
                 return ConversationHandler.END
             
-            logger.info(f"User {user_id}: Loaded {loaded} test files")
+            logger.info(f"User {user_id}: Loaded {loaded} test files for consolidation")
             
             # Consolidate
             consolidated_data = processor.consolidate_results()
@@ -272,6 +294,34 @@ I can help you consolidate test results from multiple Excel files.
             self.cleanup_session(user_id)
             return ConversationHandler.END
     
+    async def consolidate_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle /consolidate command - process all uploaded files on demand"""
+        user_id = update.effective_user.id
+        
+        # Get user session
+        session = session_manager.get_session(user_id)
+        uploaded_files = session_manager.get_files_for_consolidation(user_id)
+        
+        # Check if consolidation is possible
+        if not WorkflowAgent.should_consolidate(session):
+            await update.message.reply_text(
+                "⚠️ **Cannot consolidate yet**\n\n"
+                "Test 1 file is required as the base.\n"
+                "Please upload Test 1 first.",
+                parse_mode="Markdown"
+            )
+            return SELECTING_FORMAT
+        
+        if not uploaded_files:
+            await update.message.reply_text(
+                "📁 No files uploaded yet.\n"
+                "Send files to get started."
+            )
+            return SELECTING_FORMAT
+        
+        # Show format selection
+        return await self.show_format_selection(update, context)
+    
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /cancel command"""
         user_id = update.effective_user.id
@@ -283,12 +333,7 @@ I can help you consolidate test results from multiple Excel files.
     @staticmethod
     def cleanup_session(user_id):
         """Clean up temporary files for a user"""
-        if user_id in user_sessions:
-            import shutil
-            temp_dir = user_sessions[user_id]['temp_dir']
-            if Path(temp_dir).exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            del user_sessions[user_id]
+        session_manager.clear_session(user_id)
 
 def build_application(token: str) -> Application:
     """Construct the PTB Application with handlers registered."""
@@ -312,6 +357,7 @@ def build_application(token: str) -> Application:
     )
 
     application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("consolidate", handler.consolidate_command))
     application.add_handler(CommandHandler("help", handler.help_command))
     application.add_handler(CommandHandler("start", handler.start))
 
