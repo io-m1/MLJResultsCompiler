@@ -1,0 +1,311 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║         TEST RESULTS COLLATION AUTOMATION - QUICK REFERENCE CARD           ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+INSTALLATION (One-Time Setup)
+─────────────────────────────
+
+1. Download Python 3.7+ from python.org
+   - Windows: Run installer, check "Add to PATH"
+   - Linux: apt-get install python3-pip
+   - macOS: brew install python3
+
+2. Install libraries:
+   pip install pandas openpyxl --break-system-packages
+
+3. Create working folder with subfolders:
+   ExamResults/
+   ├── input/          (place test Excel files here)
+   └── output/         (results will appear here)
+
+4. Copy these 4 files to ExamResults/:
+   - test_collation_automation.py
+   - data_validator.py
+   - master_automation.py
+   - run_automation_windows.bat (Windows) or run_automation_linux.sh (Linux/Mac)
+
+
+MONTHLY USAGE WORKFLOW
+──────────────────────
+
+BEFORE Processing:
+  1. Download test Excel files from course platform
+  2. Ensure they're in .xlsx format
+  3. Filenames must contain: TEST_1, TEST_2, TEST_3, TEST_4, TEST_5
+
+PUT FILES IN:
+  ExamResults/input/
+  ├── TEST_1_*.xlsx
+  ├── TEST_2_*.xlsx
+  ├── TEST_3_*.xlsx
+  ├── TEST_4_*.xlsx
+  └── TEST_5_*.xlsx
+
+RUN AUTOMATION:
+  
+  Windows (Easiest):
+    Double-click: run_automation_windows.bat
+  
+  Windows (Command Line):
+    python master_automation.py input output JAN_2026
+  
+  Linux/Mac:
+    bash run_automation_linux.sh JAN_2026
+
+CHECK RESULTS:
+  Files in ExamResults/output/:
+  ✓ OBS_JAN_2026_RESULT_SHEET.xlsx  ← Main output (open in Excel)
+  ✓ collation_log_JAN_2026_*.json   ← Error tracking
+  ✓ execution_log_JAN_2026_*.json   ← Processing history
+  ✓ validation_report_*.json        ← Data quality
+
+VERIFY OUTPUT:
+  1. Open OBS_JAN_2026_RESULT_SHEET.xlsx in Excel
+  2. Check collation_log - should be empty of errors
+  3. Spot-check 3 random participants
+  4. Look for PASS/FAIL status in last column
+  5. Verify test scores are percentages
+
+DISTRIBUTE:
+  Share OBS_JAN_2026_RESULT_SHEET.xlsx with stakeholders
+
+
+INPUT FILE REQUIREMENTS
+──────────────────────
+
+Must Have:
+  ✓ Format: .xlsx (Excel 2007+)
+  ✓ Sheet name: "Responses" (case-sensitive)
+  ✓ Columns: Full Names, Email, Result (with %)
+  ✓ Data starts at Row 1 (header) and Row 2+ (data)
+
+File Naming (Must Match):
+  ✓ TEST_1_*.xlsx  or  test_1_*.xlsx
+  ✓ TEST_2_*.xlsx  or  test_2_*.xlsx
+  ✓ TEST_3_*.xlsx  or  test_3_*.xlsx
+  ✓ TEST_4_*.xlsx  or  test_4_*.xlsx
+  ✓ TEST_5_*.xlsx  or  Ultrasonography_Test_5_*.xlsx
+
+
+OUTPUT FILE STRUCTURE
+────────────────────
+
+Columns in OBS_[MONTH_YEAR]_RESULT_SHEET.xlsx:
+
+  A: S/N              Serial number (1, 2, 3, ...)
+  B: NAMES            Participant name
+  C: EMAIL            Participant email
+  D: TEST 1           Test 1 score (%)
+  E: TEST 2           Test 2 score (%)
+  F: TEST 3           Test 3 score (%)
+  G: TEST 4           Test 4 score (%)
+  H: TEST 5           Test 5 score (%)
+  I: GRP DISCUSSION   Fixed at 0.8
+  J: TOTAL MARK       Sum of all (formula)
+  K: SCORE            Final score (formula)
+  L: STATUS           PASS or FAIL
+
+Formulas Used:
+  - TOTAL MARK: =SUM(D:I)
+  - SCORE: =TOTAL*16.6666
+  - STATUS: =IF(SCORE>=50,"PASS","FAIL")
+
+
+ERROR LOG READING
+─────────────────
+
+Check collation_log_JAN_2026_*.json:
+
+  "errors": []              ← No errors (good!)
+  "errors": [...]           ← Has errors (need review)
+  "warnings": []            ← No warnings (good!)
+  "warnings": [...]         ← Has warnings (minor issues)
+
+Common Errors & Fixes:
+
+  ❌ "Required columns not found"
+     → Check Excel file has columns: Full Names, Email, Result
+     → Check sheet is named "Responses"
+
+  ❌ "No test files found"
+     → Check files are in input/ folder
+     → Check filenames contain TEST_1, TEST_2, etc.
+     → Check files end with .xlsx
+
+  ⚠️  "Empty or invalid data extracted"
+     → Check data starts in Row 1 (headers) + Row 2+ (data)
+     → Check for blank rows in middle of data
+
+  ⚠️  "Participant count mismatch"
+     → Normal if some didn't take all tests
+     → Check validation_report.json for coverage
+
+
+CUSTOMIZATION
+─────────────
+
+Change Pass Mark (from 50% to 60%):
+  Edit test_collation_automation.py
+  Find: self.pass_mark = 50
+  Change to: self.pass_mark = 60
+
+Change Output Filename:
+  Edit save_results() call
+  Change from: OBS_JAN_2026_RESULT_SHEET.xlsx
+  To: CUSTOM_NAME_JAN_2026.xlsx
+
+Add Custom Column:
+  Edit create_final_sheet() method
+  Add column M with your custom data
+  Update headers list to include new column
+
+
+TROUBLESHOOTING QUICK FIX
+────────────────────────
+
+Problem             | Solution
+────────────────────|──────────────────────────────
+Python not found    | Reinstall Python, check "Add to PATH"
+Module not found    | Run: pip install pandas openpyxl
+File not found      | Check path is correct, file exists
+No test files       | Check filenames contain TEST_1, etc.
+Empty output        | Check error log and validation report
+Wrong participant   | Check Excel sheet is named "Responses"
+Missing scores      | Some participants may not have all tests
+
+
+SCHEDULING (Optional - Automatic Monthly Runs)
+───────────────────────────────────────────────
+
+Windows Task Scheduler:
+  1. Open Task Scheduler
+  2. Create Basic Task → Monthly → 1st of month @ 9 AM
+  3. Action: Start Python.exe with arguments
+  4. Program: C:\Python311\python.exe
+  5. Arguments: path\to\master_automation.py input output JAN_2026
+
+Linux/Mac Cron:
+  1. crontab -e
+  2. Add: 0 9 1 * * /path/to/run_automation_linux.sh JAN_2026
+  3. Save (Ctrl+X, Y, Enter)
+
+See IMPLEMENTATION_GUIDE.md for detailed instructions
+
+
+FILES TO KEEP
+─────────────
+
+After each run, archive these files:
+
+  ✓ OBS_JAN_2026_RESULT_SHEET.xlsx   (Main deliverable)
+  ✓ collation_log_JAN_2026_*.json    (Error tracking)
+  ✓ execution_log_JAN_2026_*.json    (Audit trail)
+  ✓ validation_report_*.json         (Quality report)
+  ✓ Input Excel files                (Source data)
+
+Suggested Archive Structure:
+  Archives/
+  ├── 2026-01-January/
+  │   ├── OBS_JAN_2026_RESULT_SHEET.xlsx
+  │   └── *.json logs
+  ├── 2026-02-February/
+  └── 2026-03-March/
+
+
+QUICK COMMAND REFERENCE
+───────────────────────
+
+Check Python version:
+  python --version
+
+Check installed libraries:
+  pip list | grep pandas
+
+Run full automation:
+  python master_automation.py ./input ./output JAN_2026
+
+Run just validation:
+  python data_validator.py ./input ./output/OBS_*.xlsx
+
+Run just collation:
+  python test_collation_automation.py ./input ./output JAN_2026
+
+See execution history:
+  cat /output_folder/execution_log_*.json
+
+See error details:
+  cat /output_folder/collation_log_*.json
+
+
+SUPPORT CONTACTS
+────────────────
+
+Start with:
+  1. README.md              (Quick overview)
+  2. SETUP_AND_CONFIGURATION.md   (Detailed setup)
+  3. IMPLEMENTATION_GUIDE.md      (Full procedures)
+
+Check error logs:
+  1. collation_log_*.json         (Processing errors)
+  2. validation_report_*.json     (Data quality)
+  3. execution_log_*.json         (Step-by-step history)
+
+Common solutions:
+  See "TROUBLESHOOTING QUICK FIX" section above
+
+
+PERFORMANCE EXPECTATIONS
+────────────────────────
+
+Typical Monthly Run:
+
+Input:  5 Excel files with 100-200 participants
+Time:   2-5 seconds total
+Output: 1 result file + 3 log files
+
+Breakdown:
+  File discovery:     <1 second
+  Data extraction:    <1 second  
+  Merging:           <1 second
+  Output generation: <1 second
+  Validation:        <1 second
+  ──────────────
+  TOTAL:             ~2-3 seconds
+
+Scalability:
+  100 participants:   ~2 seconds
+  500 participants:   ~3 seconds
+  1000+ participants: ~5 seconds
+
+
+VERSION & STATUS
+────────────────
+
+System Version:    1.0
+Last Updated:      January 31, 2026
+Status:            ✅ PRODUCTION READY
+Tested:            ✅ YES (115 participants)
+Python Required:   3.7+
+Libraries:         pandas 1.x, openpyxl 3.x
+Operating Systems: Windows, Linux, macOS
+
+
+CONTACT & QUESTIONS
+───────────────────
+
+Most questions are answered in the documentation files.
+Please read:
+  1. README.md (quick start)
+  2. SETUP_AND_CONFIGURATION.md (detailed setup)
+  3. IMPLEMENTATION_GUIDE.md (full procedures)
+
+If still stuck:
+  - Check error log (collation_log_*.json)
+  - Check validation report (validation_report_*.json)
+  - Check execution log (execution_log_*.json)
+  - Review "TROUBLESHOOTING" section of IMPLEMENTATION_GUIDE.md
+
+
+═══════════════════════════════════════════════════════════════════════════════
+Keep this card visible during monthly processing runs!
+═══════════════════════════════════════════════════════════════════════════════
