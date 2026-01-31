@@ -122,27 +122,65 @@ class ExcelProcessor:
         """
         loaded_count = 0
         
-        # Find all test files if max_tests not specified
+        # Find all XLSX files (not just "Test" named ones)
         if max_tests is None:
-            test_files = sorted(self.input_dir.glob("*[Tt]est*.xlsx"))
+            all_xlsx_files = sorted(self.input_dir.glob("*.xlsx"))
             test_nums = set()
-            for f in test_files:
-                # Extract test number from filename
-                for part in f.stem.split():
-                    if part.isdigit():
-                        test_nums.add(int(part))
-            max_tests = max(test_nums) if test_nums else 5
-        
-        for test_num in range(1, max_tests + 1):
-            pattern = f"*[Tt]est*{test_num}*.xlsx"
-            matching_files = list(self.input_dir.glob(pattern))
             
-            if matching_files:
-                if self.load_test_file(matching_files[0], test_num):
+            logger.info(f"Scanning {len(all_xlsx_files)} files in {self.input_dir}")
+            
+            for f in all_xlsx_files:
+                # Extract test number from filename using flexible pattern
+                test_num = self._extract_test_number_from_file(f.name)
+                if test_num:
+                    test_nums.add(test_num)
+                    logger.debug(f"Found test {test_num} in file: {f.name}")
+            
+            max_tests = max(test_nums) if test_nums else 5
+            logger.info(f"Detected max tests: {max_tests}, found test numbers: {sorted(test_nums)}")
+        
+        # Load each test file by number
+        for test_num in range(1, max_tests + 1):
+            # Find file with this test number
+            matching_file = self._find_test_file(test_num)
+            
+            if matching_file:
+                logger.info(f"Loading test {test_num} from: {matching_file.name}")
+                if self.load_test_file(matching_file, test_num):
                     loaded_count += 1
+                    logger.info(f"Successfully loaded test {test_num}: {len(self.test_data.get(test_num, {}))} participants")
             else:
                 logger.info(f"No test {test_num} file found")
         
+        return loaded_count
+    
+    def _find_test_file(self, test_num: int) -> Optional[Path]:
+        """Find the file matching a specific test number"""
+        for f in sorted(self.input_dir.glob("*.xlsx")):
+            if self._extract_test_number_from_file(f.name) == test_num:
+                return f
+        return None
+    
+    @staticmethod
+    def _extract_test_number_from_file(filename: str) -> Optional[int]:
+        """
+        Extract test number from filename (matches _extract_test_number in telegram_bot)
+        Supports: 'Test 1', 'test1', '1.xlsx', 'result_1', 'exam(1)', etc.
+        """
+        import re
+        name_without_ext = filename.rsplit('.', 1)[0] if '.' in filename else filename
+        
+        # Try 1: Look for "Test N" or "test N" format first
+        match = re.search(r'[Tt]est\s*(\d+)', name_without_ext)
+        if match:
+            return int(match.group(1))
+        
+        # Try 2: Look for any number in the filename
+        match = re.search(r'(\d+)', name_without_ext)
+        if match:
+            return int(match.group(1))
+        
+        return None
         return loaded_count
     
     def consolidate_results(self) -> Dict:
@@ -161,6 +199,10 @@ class ExcelProcessor:
             logger.error("Test 1 data is required as the base")
             return {}
         
+        logger.info(f"Starting consolidation with {len(self.test_data)} test datasets")
+        for test_num in sorted(self.test_data.keys()):
+            logger.info(f"  Test {test_num}: {len(self.test_data[test_num])} participants")
+        
         consolidated = {}
         
         # Iterate through Test 1 participants ONLY (primary source)
@@ -175,10 +217,13 @@ class ExcelProcessor:
                 if test_num != 1:
                     # Only add if email matches in that test (don't copy Test 1 score)
                     if email in self.test_data[test_num]:
-                        consolidated[email][f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
+                        score = self.test_data[test_num][email]['score']
+                        consolidated[email][f'test_{test_num}_score'] = score
+                        logger.debug(f"  {email}: Test {test_num} score = {score}")
                     else:
                         # Explicitly set as None if not found
                         consolidated[email][f'test_{test_num}_score'] = None
+                        logger.debug(f"  {email}: Test {test_num} NOT FOUND (None)")
         
         # Sort by name
         consolidated = dict(sorted(consolidated.items(), 
