@@ -1,7 +1,7 @@
-# Build tools (MUST be first for Render deployment with Python 3.13)
+# PEP 517 Build Backend (MUST be first - required for Render to build from source)
 setuptools>=68.0.0
-wheel>=0.40.0
-pip>=24.0.0
+wheel
+pip>=23.0.0
 
 # Web Framework
 fastapi==0.110.0
