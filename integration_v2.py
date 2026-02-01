@@ -382,14 +382,14 @@ def main():
     result = compiler.compile_with_validation()
     
     if result['status'] == 'completed':
-        print(f"✓ Compilation successful!")
-        print(f"  Participants: {result['participants']}")
-        print(f"  Files processed: {result['files_processed']}")
+        logger.info(f"✓ Compilation successful!")
+        logger.info(f"  Participants: {result['participants']}")
+        logger.info(f"  Files processed: {result['files_processed']}")
         sys.exit(0)
     else:
-        print(f"✗ Compilation failed!")
+        logger.error(f"✗ Compilation failed!")
         for error in result['errors']:
-            print(f"  - {error}")
+            logger.error(f"  - {error}")
         sys.exit(1)
 
 
