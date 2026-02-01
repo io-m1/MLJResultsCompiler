@@ -1,13 +1,13 @@
-# Build tools (REQUIRED for Render deployment)
-setuptools>=65.0.0
+# Build tools (MUST be first for Render deployment with Python 3.13)
+setuptools>=68.0.0
 wheel>=0.40.0
-pip>=23.0.0
+pip>=24.0.0
 
 # Web Framework
 fastapi==0.110.0
-uvicorn[standard]==0.23.2
+uvicorn[standard]==0.27.0
 python-multipart==0.0.6
-aiohttp==3.9.1
+aiohttp==3.9.2
 
 # Data Processing
 pandas==2.0.3
