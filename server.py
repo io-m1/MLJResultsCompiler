@@ -8,6 +8,8 @@ import os
 import sys
 import threading
 import logging
+import asyncio
+import time
 from pathlib import Path
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
@@ -61,6 +63,10 @@ def start_bot_thread():
             from telegram_bot import build_application
             from dotenv import load_dotenv
             
+            # Give previous instance time to fully disconnect
+            logger.info("Waiting 3s for old bot instance to disconnect...")
+            time.sleep(3)
+            
             load_dotenv(dotenv_path='.env')
             token = os.getenv('TELEGRAM_BOT_TOKEN')
             
@@ -87,7 +93,7 @@ def start_bot_thread():
                 # Add small delay to ensure previous instance fully disconnected
                 time.sleep(2)
                 
-                # Start the updater (handles incoming updates) with retry logic
+                # Start the updater (handles incoming updates) with aggressive retry logic
                 while retry_count < max_retries:
                     try:
                         logger.info(f"Starting polling (attempt {retry_count + 1}/{max_retries})...")
@@ -106,15 +112,31 @@ def start_bot_thread():
                         # Keep the loop running indefinitely
                         loop.run_forever()
                     
-                    except Conflict as conflict_err:
+                    except (Conflict, asyncio.CancelledError, Exception) as err:
                         retry_count += 1
-                        wait_time = min(2 ** retry_count, 32)  # Exponential backoff, max 32s
-                        logger.warning(f"Conflict error (attempt {retry_count}/{max_retries}): {conflict_err}")
-                        logger.info(f"Another bot instance detected. Waiting {wait_time}s before retry...")
+                        wait_time = min(2 ** retry_count, 60)  # Exponential backoff, max 60s
+                        
+                        if isinstance(err, Conflict):
+                            logger.warning(f"Conflict error (attempt {retry_count}/{max_retries}): {err}")
+                            logger.info(f"Another bot instance detected. Waiting {wait_time}s before retry...")
+                        elif isinstance(err, asyncio.CancelledError):
+                            logger.warning(f"Task cancelled (attempt {retry_count}/{max_retries})")
+                            logger.info(f"Waiting {wait_time}s before retry...")
+                        else:
+                            logger.error(f"Error (attempt {retry_count}/{max_retries}): {type(err).__name__}: {err}")
+                            logger.info(f"Waiting {wait_time}s before retry...")
                         
                         if retry_count >= max_retries:
-                            logger.error(f"Max retries exceeded. Giving up.")
+                            logger.error(f"Max retries ({max_retries}) exceeded after {wait_time}s backoff. Giving up.")
                             break
+                        
+                        # Force disconnect to clean up state
+                        try:
+                            if application.updater.running:
+                                logger.info("Stopping updater...")
+                                loop.run_until_complete(application.updater.stop())
+                        except Exception as stop_err:
+                            logger.warning(f"Error stopping updater: {stop_err}")
                         
                         time.sleep(wait_time)
                     
