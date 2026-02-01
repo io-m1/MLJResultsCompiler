@@ -17,6 +17,7 @@ from src.hypersonic_core import hypersonic_core, ProcessingTask
 from src.data_source_manager import DataSource, data_source_manager
 from src.document_learning_engine import learning_engine
 from src.platform_adapter import platform_bridge, PlatformMessage, PlatformResponse
+from src.web_ui import router as web_ui_router
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,9 @@ app = FastAPI(
     description="Hypersonic lightweight document processing platform",
     version="1.0.0"
 )
+
+# Include web UI routes
+app.include_router(web_ui_router)
 
 
 # ============================================================================
