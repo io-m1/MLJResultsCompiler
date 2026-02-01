@@ -12,21 +12,39 @@ Takes messy Excel results from multiple sources, consolidates by email, applies 
 
 **Current Maturity:** Core pipeline works. Ready for low-volume use. Not yet enterprise-hardened.
 
-## Proven Features ✅
+## Currently Implemented ✅
 
-- ✅ Email-matched consolidation (core logic)
-- ✅ Participation bonus calculation (Grade 6)
-- ✅ Clean web UI (simple upload/download)
-- ✅ Telegram bot interface (command-driven)
-- ✅ Session persistence (survives restarts)
-- ✅ Automated CI/CD testing (GitHub Actions)
+### Core Consolidation
+- ✅ Load Excel files with multiple results
+- ✅ Match students by email address
+- ✅ Merge duplicate entries
+- ✅ Calculate participation bonuses (Grade 6 specific)
+- ✅ Generate pass/fail determination
+- ✅ Export consolidated results to Excel
+
+### Interfaces
+- ✅ Web UI: Upload files, view results, download consolidation
+- ✅ Telegram Bot: Command-driven interaction
+- ✅ REST API: Programmatic access (hybrid_bridge endpoints)
+
+### Data & Operations
+- ✅ Session persistence: Survives server restarts
+- ✅ Automatic cleanup: Expired sessions removed daily
+- ✅ CI/CD automation: Tests run on every commit (Python 3.10-3.12)
+- ✅ Error tracking: Structured logging for debugging
+
+### Under Development
+- 🟡 Service architecture: Ready for deployment split
+- 🟡 Security hardening: Tier 3 planned
+- 🟡 Monitoring: Health endpoints ready
 
 ## Not Yet Ready ⚠️
 
-- ❌ AI features (optional, feature-flagged, incomplete)
-- ❌ Enterprise security (audit in progress)
-- ❌ High-volume concurrency (tested for small schools)
-- ❌ 100% test coverage (60% currently)
+- ❌ Multi-school support: Data isolation not implemented
+- ❌ High-volume load: Not tested >1000 records
+- ❌ AI features: Optional, incomplete, feature-flagged
+- ❌ Enterprise security: Path traversal risk identified
+- ❌ Advanced reporting: Only basic Excel export
 
 ## Quick Start
 
