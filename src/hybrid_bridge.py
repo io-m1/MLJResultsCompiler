@@ -18,6 +18,7 @@ from src.excel_processor import ExcelProcessor
 from src.participation_bonus import ParticipationBonusCalculator
 from src.session_manager import SessionManager
 from src.ai_assistant import get_assistant
+from src.async_ai_service import get_async_ai_service
 
 router = APIRouter(prefix="/api/hybrid", tags=["hybrid"])
 
@@ -394,11 +395,13 @@ async def ai_assist(request: Request):
                 }
         
         # Otherwise, analyze with context awareness (conversational response)
-        analysis = assistant.analyze_message(message, session_id, context)
+        async_ai = get_async_ai_service()
+        analysis = await async_ai.analyze_message_async(message, session_id, context)
         
         # Handle suggested action if any
         action_result = None
         if analysis.get("action"):
+            assistant = get_assistant()
             action_result = assistant.execute_action(analysis["action"], session_id)
         
         return {

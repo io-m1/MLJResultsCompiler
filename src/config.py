@@ -6,7 +6,11 @@ Never commit secrets. Never hardcode configuration.
 import os
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseSettings, validator
+try:
+    from pydantic_settings import BaseSettings
+    from pydantic import validator
+except ImportError:
+    from pydantic import BaseSettings, validator
 
 
 class Settings(BaseSettings):

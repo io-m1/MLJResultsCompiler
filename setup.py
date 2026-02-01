@@ -39,6 +39,7 @@ setup(
         "groq==0.4.2",
         "pandas==2.0.3",
         "numpy==1.24.3",
+        "pydantic-settings>=2.0.0",
     ],
     extras_require={
         "dev": [
