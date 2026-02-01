@@ -18,12 +18,11 @@ setup(
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: MIT License",
     ],
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     install_requires=[
         "openpyxl==3.1.5",
         "python-telegram-bot==20.3",
