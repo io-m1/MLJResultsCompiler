@@ -35,6 +35,8 @@ def start_bot_thread():
     """Start the Telegram bot in a separate thread"""
     def bot_worker():
         try:
+            import asyncio
+            
             logger.info("Initializing Telegram bot in background thread...")
             from telegram_bot import build_application
             from dotenv import load_dotenv
@@ -46,17 +48,24 @@ def start_bot_thread():
                 logger.error("TELEGRAM_BOT_TOKEN not set! Bot will not start.")
                 return
             
-            application = build_application(token)
-            logger.info("Starting Telegram bot polling...")
-            # run_polling() blocks in this thread, which is what we want
-            application.run_polling(
-                allowed_updates=None,
-                drop_pending_updates=False,
-                read_timeout=20,
-                write_timeout=20,
-                connect_timeout=20,
-                pool_timeout=20
-            )
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                application = build_application(token)
+                logger.info("Starting Telegram bot polling...")
+                # run_polling() creates its own event loop internally
+                application.run_polling(
+                    allowed_updates=None,
+                    drop_pending_updates=False,
+                    read_timeout=20,
+                    write_timeout=20,
+                    connect_timeout=20,
+                    pool_timeout=20
+                )
+            finally:
+                loop.close()
         except Exception as e:
             logger.error(f"Fatal error in bot: {e}", exc_info=True)
     
