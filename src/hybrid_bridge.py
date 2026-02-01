@@ -156,7 +156,7 @@ async def consolidate_results(
         
         # Process files
         file_paths = [f["path"] for f in session["files"]]
-        processor = ExcelProcessor()
+        processor = ExcelProcessor("temp_uploads", "temp_uploads")
         
         # Consolidate
         consolidated_data = processor.consolidate_multiple_files(file_paths)
