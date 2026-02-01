@@ -190,7 +190,12 @@ async def consolidate_results(
         # Store result
         result_id = str(uuid.uuid4())
         result_path = f"temp_uploads/{session_id}/consolidated_{result_id}.xlsx"
-        processor.save_xlsx(consolidated_data, result_path)
+        
+        # Save using the correct method - save_consolidated_file expects output filename, not full path
+        # We need to set the output_dir and call with just the filename
+        processor.output_dir = f"temp_uploads/{session_id}"
+        os.makedirs(processor.output_dir, exist_ok=True)
+        processor.save_consolidated_file(consolidated_data, f"consolidated_{result_id}.xlsx")
         
         session["status"] = "completed"
         session["consolidation_result"] = {
