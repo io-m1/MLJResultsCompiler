@@ -342,10 +342,10 @@ HTML_TEMPLATE = """
 
         <!-- Navigation -->
         <nav>
-            <button class="active" onclick="switchTab('upload')">📤 Upload</button>
-            <button onclick="switchTab('results')">📋 Results</button>
-            <button onclick="switchTab('assistant')">🤖 AI Assistant</button>
-            <button onclick="switchTab('design')">🎨 Design Study</button>
+            <button class="active" onclick="switchTab('upload', event)">📤 Upload</button>
+            <button onclick="switchTab('results', event)">📋 Results</button>
+            <button onclick="switchTab('assistant', event)">🤖 AI Assistant</button>
+            <button onclick="switchTab('design', event)">🎨 Design Study</button>
         </nav>
 
         <!-- Upload Tab -->
@@ -453,12 +453,14 @@ HTML_TEMPLATE = """
         let chatMessages = [];
 
         // ===== TAB SWITCHING =====
-        function switchTab(tabName) {
+        function switchTab(tabName, evt) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
             
             document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
+            if (evt && evt.target) {
+                evt.target.classList.add('active');
+            }
         }
 
         // ===== FILE UPLOAD =====
