@@ -1,7 +1,10 @@
 # PEP 517 Build Backend (MUST be first - required for Render to build from source)
-setuptools>=68.0.0
+setuptools>=69.0.0
 wheel
 pip>=23.0.0
+
+# Configuration Management (must be early)
+pydantic-settings==2.1.0
 
 # Web Framework
 fastapi==0.110.0
@@ -26,5 +29,4 @@ python-dotenv==1.0.0
 Pillow==11.0.0
 beautifulsoup4==4.12.2
 feedparser==6.0.10
-pydantic-settings>=2.0.0
 

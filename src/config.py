@@ -8,9 +8,15 @@ from pathlib import Path
 from typing import Optional
 try:
     from pydantic_settings import BaseSettings
-    from pydantic import validator
+    from pydantic import Field, field_validator, ConfigDict
 except ImportError:
-    from pydantic import BaseSettings, validator
+    try:
+        from pydantic import BaseSettings, Field, field_validator, ConfigDict
+    except ImportError:
+        # Fallback to v1 syntax
+        from pydantic import BaseSettings, Field, validator
+        field_validator = validator
+        ConfigDict = None
 
 
 class Settings(BaseSettings):
@@ -64,23 +70,37 @@ class Settings(BaseSettings):
     WORKERS: int = 4
     RELOAD: bool = False
     
-    class Config:
-        """Pydantic config"""
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    # Pydantic v2 configuration (preferred)
+    try:
+        model_config = ConfigDict(
+            env_file=".env",
+            env_file_encoding="utf-8",
+            case_sensitive=True
+        )
+    except NameError:
+        # Fallback for Pydantic v1 (when ConfigDict is not available)
+        class Config:
+            """Pydantic v1 config (fallback)"""
+            env_file = ".env"
+            env_file_encoding = "utf-8"
+            case_sensitive = True
     
-    @validator("ENABLE_AI_ASSISTANT", pre=True, always=True)
-    def set_ai_enabled(cls, v, values):
+    @field_validator("ENABLE_AI_ASSISTANT", mode="before")
+    @classmethod
+    def set_ai_enabled(cls, v, info):
         """Enable AI if API key is set"""
+        values = info.data if hasattr(info, 'data') else info.values if hasattr(info, 'values') else {}
         return bool(values.get("GROQ_API_KEY"))
     
-    @validator("ENABLE_TELEGRAM_BOT", pre=True, always=True)
-    def set_telegram_enabled(cls, v, values):
+    @field_validator("ENABLE_TELEGRAM_BOT", mode="before")
+    @classmethod
+    def set_telegram_enabled(cls, v, info):
         """Enable bot if token is set"""
+        values = info.data if hasattr(info, 'data') else info.values if hasattr(info, 'values') else {}
         return bool(values.get("TELEGRAM_BOT_TOKEN"))
     
-    @validator("ENV")
+    @field_validator("ENV")
+    @classmethod
     def validate_env(cls, v):
         """Validate environment"""
         valid = ["development", "staging", "production"]

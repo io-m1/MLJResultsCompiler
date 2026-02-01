@@ -118,7 +118,7 @@ class ValidationAgent:
                 message += f"• ... and {len(analysis['issues']) - 3} more issues"
             return False, message
         
-        success_msg = f"✅ Validated {len(analysis['valid_files'])} file(s)"
+        success_msg = f"[OK] Validated {len(analysis['valid_files'])} file(s)"
         
         if analysis['invalid_files']:
             success_msg += f"\n⚠️ {len(analysis['invalid_files'])} file(s) had issues:\n"
@@ -173,7 +173,7 @@ class ProcessingAgent:
                 'consolidated_data': consolidated,
                 'participant_count': len(consolidated),
                 'processor': processor
-            }, f"✅ Processed {loaded} files, {len(consolidated)} participants"
+            }, f"[OK] Processed {loaded} files, {len(consolidated)} participants"
             
         except Exception as e:
             logger.error(f"Processing error: {str(e)}")
@@ -242,7 +242,7 @@ class ExportAgent:
                 return False, None, f"❌ Export file not created"
             
             format_name = plan['format_info'].get('name', 'Unknown')
-            return True, output_file, f"✅ Exported as {format_name}"
+            return True, output_file, f"[OK] Exported as {format_name}"
             
         except Exception as e:
             logger.error(f"Export error: {str(e)}")

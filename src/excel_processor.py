@@ -541,7 +541,7 @@ class ExcelProcessor:
                 draw.text((10, y + 10), f"... and {total_participants - rows_to_show} more participants", 
                          fill='#666666', font=data_font)
             
-            draw.text((10, y + 40), "✅ Scroll down to see validation alerts and confirm", 
+            draw.text((10, y + 40), "[OK] Scroll down to see validation alerts and confirm", 
                      fill='#228B22', font=data_font)
             
             # Save image

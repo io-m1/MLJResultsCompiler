@@ -97,7 +97,7 @@ class KeyboardLayouts:
         """Keyboard during file upload"""
         keyboard = [
             [
-                InlineKeyboardButton("✅ Done Uploading", callback_data="upload_done"),
+                InlineKeyboardButton("[OK] Done Uploading", callback_data="upload_done"),
                 InlineKeyboardButton("📋 View Files", callback_data="view_files"),
             ],
             [
@@ -130,7 +130,7 @@ class KeyboardLayouts:
         """Consolidation confirmation"""
         keyboard = [
             [
-                InlineKeyboardButton("✅ Start Consolidation", callback_data="start_consolidate"),
+                InlineKeyboardButton("[OK] Start Consolidation", callback_data="start_consolidate"),
                 InlineKeyboardButton("❌ Cancel", callback_data="cancel_consolidate"),
             ]
         ]
@@ -227,7 +227,7 @@ Select an action above or type /help for more information.
 ║  📤 UPLOAD IN PROGRESS             ║
 ╚════════════════════════════════════╝
 
-✅ Files received: {file_count}
+[OK] Files received: {file_count}
 
 📋 Test files uploaded:
 """
@@ -250,7 +250,7 @@ Select an action above or type /help for more information.
         """Success result message"""
         return f"""
 ╔════════════════════════════════════╗
-║  ✅ CONSOLIDATION COMPLETE         ║
+║  [OK] CONSOLIDATION COMPLETE         ║
 ╚════════════════════════════════════╝
 
 📊 Results Summary:
@@ -283,7 +283,7 @@ Your consolidated results are ready to download! 📥
         """Display list of uploaded files"""
         msg = "📋 Uploaded Files:\n\n"
         for i, file in enumerate(files, 1):
-            msg += f"  {i}. ✅ {file}\n"
+            msg += f"  {i}. [OK] {file}\n"
         return msg
     
     @staticmethod
@@ -334,7 +334,7 @@ class Breadcrumb:
             "Upload": "📤",
             "Format": "⚙️",
             "Consolidate": "📊",
-            "Result": "✅",
+            "Result": "[OK]",
         }
         
         parts = []
@@ -354,7 +354,7 @@ class Badge:
     
     @staticmethod
     def success(text: str) -> str:
-        return f"✅ {text}"
+        return f"[OK] {text}"
     
     @staticmethod
     def error(text: str) -> str:
@@ -432,7 +432,7 @@ class StatsDisplay:
 ║
 ║  👥 Participants:     {stats.get('participants', 0):>15}
 ║  📋 Tests:            {stats.get('tests', 0):>15}
-║  ✅ Success Rate:     {stats.get('success_rate', 0):>14}%
+║  [OK] Success Rate:     {stats.get('success_rate', 0):>14}%
 ║  ⏱️  Processing Time:  {stats.get('time_ms', 0):>13}ms
 ║  💾 File Size:        {stats.get('file_size', '0MB'):>15}
 ║
@@ -473,7 +473,7 @@ class Dialog:
         
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("✅ Yes", callback_data="confirm_yes"),
+                InlineKeyboardButton("[OK] Yes", callback_data="confirm_yes"),
                 InlineKeyboardButton("❌ No", callback_data="confirm_no"),
             ]
         ])

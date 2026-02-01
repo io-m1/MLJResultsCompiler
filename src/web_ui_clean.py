@@ -364,7 +364,7 @@ HTML_TEMPLATE = """
                 <div id="fileList"></div>
 
                 <button class="btn btn-primary btn-block" onclick="submitFiles()" style="margin-top: 20px;">
-                    ✅ Consolidate Files
+                    [OK] Consolidate Files
                 </button>
             </div>
         </div>
@@ -540,7 +540,7 @@ HTML_TEMPLATE = """
                     const resultsDiv = document.getElementById('resultsContent');
                     resultsDiv.innerHTML = `
                         <div style="background: rgba(52, 199, 89, 0.1); padding: 20px; border-radius: 12px; margin: 20px 0;">
-                            <h3 style="color: #34C759;">✅ Consolidation Complete!</h3>
+                            <h3 style="color: #34C759;">[OK] Consolidation Complete!</h3>
                             <p><strong>${result.data_rows}</strong> records processed</p>
                             <a href="${result.download_url}" class="btn btn-primary" style="margin-top: 15px; display: inline-block;">
                                 ⬇️ Download Result

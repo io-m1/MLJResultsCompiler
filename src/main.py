@@ -358,14 +358,15 @@ def create_app() -> FastAPI:
     return app
 
 
+# Create global app instance for uvicorn/deployment
+app = create_app()
+
+
 def main():
     """Main entry point - runs the application"""
     import uvicorn
     
     settings = get_settings()
-    
-    # Create app
-    app = create_app()
     
     # Run with Uvicorn
     uvicorn.run(

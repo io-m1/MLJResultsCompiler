@@ -262,7 +262,7 @@ class HypersonicCore:
     def _format_response(self, task: ProcessingTask) -> str:
         """Format task response"""
         status_emoji = {
-            'completed': '✅',
+            'completed': '[OK]',
             'failed': '❌',
             'processing': '⏳'
         }

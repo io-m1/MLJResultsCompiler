@@ -217,7 +217,7 @@ class DataIntegrityValidator:
         print(f"{'='*60}\n")
         
         if self.info:
-            print("✅ INFO:")
+            print("[INFO] INFO:")
             for msg in self.info:
                 print(f"  {msg}")
             print()
@@ -235,7 +235,7 @@ class DataIntegrityValidator:
             print()
         
         if not self.errors:
-            print("✅ VALIDATION PASSED - No critical issues found!\n")
+            print("[OK] VALIDATION PASSED - No critical issues found!\n")
 
 
 # Singleton
