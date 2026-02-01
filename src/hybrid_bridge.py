@@ -259,40 +259,118 @@ async def api_status():
 
 @router.post("/ai-assist")
 async def ai_assist(request: Request):
-    """AI Assistant endpoint for conversational analysis"""
+    """Augmented Intelligence endpoint - context-aware assistance"""
     record_activity()
     
     try:
         body = await request.json()
         message = body.get('message', '')
         session_id = body.get('session_id')
-        history = body.get('history', [])
         
         if not message:
             return {"error": "No message provided"}
         
-        # Get AI assistant
+        # Build session context for awareness
+        context = {}
+        if session_id and session_id in UPLOAD_SESSIONS:
+            session = UPLOAD_SESSIONS[session_id]
+            context = {
+                "files_count": len(session.get("files", [])),
+                "status": session.get("status"),
+                "has_results": session.get("consolidation_result") is not None,
+                "error": session.get("error")
+            }
+        
+        # Get assistant with context
         assistant = get_assistant()
         
-        # Analyze message
-        analysis = assistant.analyze_message(message, session_id)
+        # Analyze with context awareness (subtle agency)
+        analysis = assistant.analyze_message(message, session_id, context)
         
-        # Execute recommended actions if needed
-        actions_to_execute = []
-        for action in analysis.get("actions", []):
-            result = assistant.execute_action(action, session_id)
-            actions_to_execute.append(result)
+        # Handle suggested action if any
+        action_result = None
+        if analysis.get("action"):
+            action_result = assistant.execute_action(analysis["action"], session_id)
         
         return {
             "response": analysis["response"],
-            "category": analysis["category"],
-            "actions_executed": actions_to_execute,
-            "timestamp": analysis["timestamp"]
+            "intent": analysis.get("intent"),
+            "action": action_result,
+            "timestamp": analysis["timestamp"],
+            "augmented": analysis.get("augmented", False)
         }
     except Exception as e:
         import traceback
         return {
             "error": str(e),
-            "response": "Sorry, I encountered an error. Please try again.",
+            "response": "Sorry, I encountered an issue. Could you try that again?",
+            "trace": traceback.format_exc()
+        }
+
+@router.post("/ai-mode")
+async def set_ai_mode(request: Request):
+    """Switch AI assistant mode (consolidation / cold_email)"""
+    record_activity()
+    
+    try:
+        body = await request.json()
+        mode = body.get('mode', 'consolidation')
+        
+        assistant = get_assistant()
+        result = assistant.set_mode(mode)
+        
+        return {
+            "success": result["success"],
+            "mode": assistant.get_mode(),
+            "message": f"Switched to {mode} mode" if result["success"] else result.get("error")
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/ai-mode")
+async def get_ai_mode():
+    """Get current AI assistant mode"""
+    record_activity()
+    assistant = get_assistant()
+    return {"mode": assistant.get_mode()}
+
+
+@router.post("/cold-email/generate")
+async def generate_cold_email(request: Request):
+    """
+    Generate precision cold email with explicit reasoning.
+    
+    Request body:
+    {
+        "recipient_name": "John Smith",
+        "company": "TechCorp",
+        "role_focus": "SaaS growth marketing",
+        "research_notes": "Recently launched new product...",
+        "links": ["https://techcorp.com", "https://linkedin.com/in/johnsmith"],
+        "your_offering": "AI-powered email outreach automation",
+        "your_credentials": "Helped 50+ companies increase response rates by 3x",
+        "your_name": "Jane Doe",
+        "your_title": "Founder"
+    }
+    """
+    record_activity()
+    
+    try:
+        body = await request.json()
+        
+        # Set mode to cold_email
+        assistant = get_assistant()
+        assistant.set_mode("cold_email")
+        
+        # Generate
+        result = assistant.generate_cold_email(body)
+        
+        return result
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
             "trace": traceback.format_exc()
         }

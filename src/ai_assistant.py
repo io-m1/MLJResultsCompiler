@@ -1,91 +1,276 @@
 # -*- coding: utf-8 -*-
 """
-AI Assistant powered by Groq LLM (Llama 3.1 70B)
-Provides intelligent, context-aware responses to user queries
-FREE tier: ~30 requests/minute
+Augmented Intelligence Assistant
+Combines human reasoning with AI speed - subtle, helpful, and naturally capable.
+Powered by Groq LLM (Llama 3.1 70B) - FREE tier
+
+Capabilities:
+- Test Results Consolidation Assistant
+- Cold Email Generator (precision outreach)
 """
 
 import os
+import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
-# Try to import Groq, fallback to simple mode if not available
+# Try to import Groq
 try:
     from groq import Groq
     GROQ_AVAILABLE = True
 except ImportError:
     GROQ_AVAILABLE = False
-    logger.warning("Groq not installed, using fallback mode")
+    logger.warning("Groq not installed, using thoughtful fallback")
 
 
-class AIAssistant:
-    """LLM-powered AI assistant with Groq backend"""
+class AugmentedAssistant:
+    """
+    Augmented Intelligence - Human reasoning meets AI speed.
+    Subtly agentic: takes actions naturally without robotic announcements.
+    
+    Modes:
+    - consolidation: Test results help (default)
+    - cold_email: Precision cold email generation
+    """
     
     def __init__(self):
         self.conversation_history: List[Dict] = []
         self.groq_client = None
         self.llm_enabled = False
+        self.session_context: Dict = {}
+        self.current_mode = "consolidation"  # Default mode
         
-        # Initialize Groq if API key is available
+        # Initialize Groq
         api_key = os.getenv("GROQ_API_KEY")
         if GROQ_AVAILABLE and api_key:
             try:
                 self.groq_client = Groq(api_key=api_key)
                 self.llm_enabled = True
-                logger.info("✓ Groq LLM initialized successfully")
+                logger.info("✓ Augmented Intelligence initialized")
             except Exception as e:
-                logger.error(f"Failed to initialize Groq: {e}")
+                logger.error(f"Failed to initialize: {e}")
         else:
-            logger.warning("GROQ_API_KEY not set, using fallback mode")
+            logger.warning("GROQ_API_KEY not set, using thoughtful fallback")
         
-        # System prompt for the LLM
-        self.system_prompt = """You are an intelligent AI assistant for the MLJ Results Compiler - a tool that helps educators consolidate and analyze student test results.
-
-YOUR CAPABILITIES:
-📤 Help users upload test files (XLSX, CSV formats)
-🔄 Guide consolidation of multiple test files into one
-📊 Explain the bonus calculation system
-📥 Assist with downloading processed results
-🛠️ Troubleshoot issues and errors
-🎓 Explain how the system works
-
-BONUS SYSTEM (Grade 6):
-- 1-2 tests participated: 5% bonus
-- 3-5 tests participated: 10% bonus  
-- 6+ tests participated: 15% bonus
-Bonuses reward consistent participation and improve final scores.
-
-HOW IT WORKS:
-1. User uploads multiple test result Excel files
-2. System merges all data intelligently
-3. Calculates participation bonuses automatically
-4. Generates a clean, professional consolidated spreadsheet
-5. User downloads the final result
-
-COMMUNICATION STYLE:
-- Be helpful, friendly, and concise
-- Use emojis sparingly but effectively
-- Provide step-by-step guidance when needed
-- If user reports an error, be empathetic and offer solutions
-- Keep responses focused and actionable
-
-Remember: You're helping educators save hours of manual work!"""
-
-        # Fallback knowledge base (used when LLM is unavailable)
+        # System prompts for different modes
+        self.system_prompts = {
+            "consolidation": self._get_consolidation_prompt(),
+            "cold_email": self._get_cold_email_prompt()
+        }
+        
+        # Thoughtful fallback responses
         self.fallback_responses = {
-            "consolidate": "🔧 I can help you consolidate your test files!\n\n1️⃣ Upload your Excel files\n2️⃣ Click 'Consolidate Files'\n3️⃣ Wait for processing\n4️⃣ Download your result\n\nNeed more help?",
-            "upload": "📤 To upload files:\n\n1. Click the upload area or drag files\n2. Select your XLSX or CSV files\n3. You can upload multiple files at once\n4. Click 'Consolidate' when ready",
-            "bonus": "💰 Bonus System:\n\n📊 Grade 6 Participation Bonus:\n• 1-2 tests: +5%\n• 3-5 tests: +10%\n• 6+ tests: +15%\n\nThe more tests a student takes, the higher their bonus!",
-            "download": "📥 To download results:\n\n1. Complete the consolidation first\n2. Go to the Results tab\n3. Click the 'Download' button\n4. Your XLSX file will download",
-            "error": "🛠️ Let me help troubleshoot!\n\nCommon fixes:\n• Refresh the page and try again\n• Check your file format (XLSX/CSV)\n• Ensure files have valid data\n• Try uploading one file at a time\n\nStill stuck? Describe the issue!",
-            "default": "👋 I'm your AI assistant! I can help with:\n\n• 📤 Uploading test files\n• 🔄 Consolidating results\n• 📊 Understanding bonuses\n• 📥 Downloading results\n• 🛠️ Troubleshooting\n\nWhat would you like to do?"
+            "consolidate": "Happy to help! Upload your test files in the Upload tab, then click Consolidate. I'll merge everything and calculate bonuses automatically.",
+            "upload": "Head to the Upload tab and drop in your Excel or CSV files. You can add multiple at once.",
+            "bonus": "The bonus system rewards consistency:\n\n• 1-2 tests → +5%\n• 3-5 tests → +10%\n• 6+ tests → +15%",
+            "download": "Once consolidation is done, your results will be in the Results tab. Just click Download.",
+            "error": "Sorry you're running into trouble. What exactly happened?",
+            "cold_email": "I can help generate precision cold emails. Please provide:\n• Recipient name & company\n• Their role/focus\n• What you're offering\n• Your credentials\n• Any research links",
+            "default": "I'm here to help! What do you need?"
         }
     
-    def analyze_message(self, message: str, session_id: Optional[str] = None) -> Dict:
-        """Analyze user message and provide intelligent response"""
+    def _get_consolidation_prompt(self) -> str:
+        return """You are an Augmented Intelligence assistant for the MLJ Results Compiler - helping educators consolidate student test results.
+
+YOUR ESSENCE:
+You combine human thoughtfulness with computational speed. You're a helpful colleague, not a robot.
+
+CAPABILITIES:
+- Guide file uploads (Excel/CSV)
+- Explain consolidation process
+- Clarify the bonus system (1-2 tests: 5%, 3-5: 10%, 6+: 15%)
+- Help troubleshoot issues
+- Understand session context
+
+HOW TO RESPOND:
+- Warm but professional, like a knowledgeable colleague
+- Concise but helpful
+- Never say "I'm executing function X"
+- Use minimal emojis
+
+Remember: You're augmenting human capability."""
+
+    def _get_cold_email_prompt(self) -> str:
+        return """You are a precision cold email generator - an Augmented Intelligence system combining human strategic reasoning with AI speed.
+
+YOUR PROCESS:
+1. Analyze all inputs: recipient details, company focus, research notes, offerings, credentials
+2. Explicit reasoning step (output visibly):
+   - Identify 2-3 core pain points, goals, or opportunities
+   - Select ONE primary solution that delivers clearest, highest-ROI outcome
+   - Justify your selection
+3. Craft email with surgical precision:
+   - Subject: 6-10 words, personalized, benefit-oriented, curiosity-driven
+   - Preview hook (first 2-3 sentences): Immediate specific reference to their situation
+   - Body: Demonstrate fit, prove with metrics/credentials, propose measurable outcome
+   - Structure: Greeting + max 3 short paragraphs (each ≤260 chars) + CTA + sign-off
+   - Tone: Confident, insightful, professional—never generic or salesy
+
+OUTPUT FORMAT (strict JSON):
+{
+  "reasoning": {
+    "pain_points_or_goals": ["point 1", "point 2", "point 3"],
+    "selected_solution": "Brief description of chosen offering",
+    "justification": "Why this delivers highest ROI"
+  },
+  "email": {
+    "subject": "Subject line here",
+    "body": "Dear [Name],\\n\\nParagraph 1\\n\\nParagraph 2\\n\\nParagraph 3\\n\\nCTA\\n\\nBest regards,\\n[Your Name]"
+  }
+}
+
+When user provides incomplete info, ask for what's missing. Be direct, not robotic."""
+    
+    def set_session_context(self, context: Dict):
+        """Update session context for awareness"""
+        self.session_context = context
+        logger.debug(f"Session context updated: {context}")
+    
+    def set_mode(self, mode: str) -> Dict:
+        """Switch between assistant modes"""
+        if mode in self.system_prompts:
+            self.current_mode = mode
+            self.conversation_history = []  # Clear history on mode switch
+            logger.info(f"Mode switched to: {mode}")
+            return {"success": True, "mode": mode}
+        else:
+            return {"success": False, "error": f"Unknown mode: {mode}"}
+    
+    def get_mode(self) -> str:
+        """Get current assistant mode"""
+        return self.current_mode
+    
+    def generate_cold_email(self, params: Dict) -> Dict:
+        """
+        Generate precision cold email with explicit reasoning.
+        
+        Required params:
+        - recipient_name: str
+        - company: str
+        - role_focus: str (their business focus)
+        - research_notes: str
+        - your_offering: str
+        - your_credentials: str
+        - your_name: str
+        
+        Optional:
+        - links: List[str] (for enrichment)
+        - your_title: str
+        """
+        required = ["recipient_name", "company", "role_focus", "your_offering", "your_credentials", "your_name"]
+        missing = [f for f in required if not params.get(f)]
+        
+        if missing:
+            return {
+                "success": False,
+                "error": f"Missing required fields: {', '.join(missing)}",
+                "required_fields": required
+            }
+        
+        # Build the generation prompt
+        prompt = self._build_cold_email_prompt(params)
+        
+        if self.llm_enabled:
+            try:
+                response = self._generate_with_llm(prompt, mode="cold_email")
+                return self._parse_cold_email_response(response)
+            except Exception as e:
+                logger.error(f"Cold email generation error: {e}")
+                return {"success": False, "error": str(e)}
+        else:
+            return {
+                "success": False,
+                "error": "LLM not available. Please set GROQ_API_KEY environment variable."
+            }
+    
+    def _build_cold_email_prompt(self, params: Dict) -> str:
+        """Build structured prompt for cold email generation"""
+        prompt = f"""Generate a precision cold email based on:
+
+RECIPIENT INFORMATION:
+- Name: {params.get('recipient_name')}
+- Company: {params.get('company')}
+- Role/Business Focus: {params.get('role_focus')}
+- Research Notes: {params.get('research_notes', 'None provided')}
+- Relevant Links: {', '.join(params.get('links', [])) or 'None provided'}
+
+YOUR OFFERING:
+- Service/Product: {params.get('your_offering')}
+- Credentials/Results: {params.get('your_credentials')}
+- Your Name: {params.get('your_name')}
+- Your Title: {params.get('your_title', '')}
+
+Follow the process:
+1. Analyze inputs
+2. Identify 2-3 pain points/goals
+3. Select ONE highest-ROI solution
+4. Craft the email with surgical precision
+
+Output strictly in JSON format."""
+        return prompt
+    
+    def _generate_with_llm(self, prompt: str, mode: str = None) -> str:
+        """Generate response using LLM"""
+        current_mode = mode or self.current_mode
+        system_prompt = self.system_prompts.get(current_mode, self.system_prompts["consolidation"])
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+        
+        completion = self.groq_client.chat.completions.create(
+            model="llama-3.1-70b-versatile",
+            messages=messages,
+            max_tokens=1000,
+            temperature=0.7
+        )
+        
+        return completion.choices[0].message.content
+    
+    def _parse_cold_email_response(self, response: str) -> Dict:
+        """Parse LLM response for cold email"""
+        try:
+            # Try to extract JSON from response
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            
+            if json_start != -1 and json_end > json_start:
+                json_str = response[json_start:json_end]
+                parsed = json.loads(json_str)
+                return {
+                    "success": True,
+                    "reasoning": parsed.get("reasoning", {}),
+                    "email": parsed.get("email", {}),
+                    "raw_response": response
+                }
+            else:
+                # Return raw response if no JSON found
+                return {
+                    "success": True,
+                    "email": {"body": response},
+                    "raw_response": response
+                }
+        except json.JSONDecodeError:
+            return {
+                "success": True,
+                "email": {"body": response},
+                "raw_response": response,
+                "note": "Response not in strict JSON format"
+            }
+
+    def analyze_message(self, message: str, session_id: Optional[str] = None, context: Optional[Dict] = None) -> Dict:
+        """
+        Analyze message and respond with augmented intelligence.
+        Context-aware, naturally capable.
+        """
+        
+        # Update context if provided
+        if context:
+            self.set_session_context(context)
         
         # Record interaction
         self.conversation_history.append({
@@ -95,91 +280,181 @@ Remember: You're helping educators save hours of manual work!"""
             "session_id": session_id
         })
         
-        # Try LLM first, fallback if unavailable
+        # Gather insights (subtle agency)
+        insights = self._gather_insights(message, session_id)
+        
+        # Generate response
         if self.llm_enabled:
             try:
-                response = self._get_llm_response(message)
+                response = self._get_augmented_response(message, insights)
                 return response
             except Exception as e:
-                logger.error(f"LLM error: {e}, using fallback")
-                return self._get_fallback_response(message)
+                logger.error(f"LLM error: {e}, using thoughtful fallback")
+                return self._get_thoughtful_fallback(message, insights)
         else:
-            return self._get_fallback_response(message)
+            return self._get_thoughtful_fallback(message, insights)
     
-    def _get_llm_response(self, message: str) -> Dict:
-        """Get response from Groq LLM"""
+    def _gather_insights(self, message: str, session_id: Optional[str]) -> Dict:
+        """
+        Subtly gather context and insights.
+        This is the 'agentic' part - but it happens quietly.
+        """
+        insights = {
+            "files_uploaded": 0,
+            "session_status": None,
+            "has_results": False,
+            "recent_error": None,
+            "user_intent": self._detect_intent(message)
+        }
         
-        # Build conversation context (last 5 messages for context)
-        messages = [{"role": "system", "content": self.system_prompt}]
+        # Use session context if available
+        if self.session_context:
+            insights["files_uploaded"] = self.session_context.get("files_count", 0)
+            insights["session_status"] = self.session_context.get("status")
+            insights["has_results"] = self.session_context.get("has_results", False)
+            insights["recent_error"] = self.session_context.get("error")
         
-        # Add recent history for context
-        recent_history = self.conversation_history[-10:]  # Last 10 messages
-        for entry in recent_history[:-1]:  # Exclude current message
+        return insights
+    
+    def _detect_intent(self, message: str) -> str:
+        """Detect user intent from message"""
+        message_lower = message.lower()
+        
+        # Cold email related intents
+        if any(w in message_lower for w in ["cold email", "email", "outreach", "pitch", "reach out"]):
+            return "cold_email"
+        
+        # Consolidation related intents
+        if any(w in message_lower for w in ["consolidate", "merge", "combine", "process"]):
+            return "consolidate"
+        elif any(w in message_lower for w in ["upload", "add", "file"]):
+            return "upload"
+        elif any(w in message_lower for w in ["bonus", "score", "grade", "percent", "calculation"]):
+            return "bonus"
+        elif any(w in message_lower for w in ["download", "result", "get", "ready"]):
+            return "download"
+        elif any(w in message_lower for w in ["error", "problem", "issue", "fail", "broken", "not working", "wrong"]):
+            return "troubleshoot"
+        elif any(w in message_lower for w in ["how", "what", "explain", "help", "work"]):
+            return "explain"
+        elif any(w in message_lower for w in ["status", "progress", "where"]):
+            return "status"
+        else:
+            return "general"
+    
+    def _get_augmented_response(self, message: str, insights: Dict) -> Dict:
+        """Generate response with LLM + context awareness"""
+        
+        # Build context-enriched prompt
+        context_note = self._build_context_note(insights)
+        
+        # Use mode-specific system prompt
+        system_prompt = self.system_prompts.get(self.current_mode, self.system_prompts["consolidation"])
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add context as system note if available
+        if context_note:
+            messages.append({
+                "role": "system", 
+                "content": f"CURRENT CONTEXT (use naturally, don't announce): {context_note}"
+            })
+        
+        # Add conversation history
+        for entry in self.conversation_history[-6:]:
             role = entry.get("role", "user")
             if role in ["user", "assistant"]:
-                messages.append({
-                    "role": role,
-                    "content": entry.get("content", "")
-                })
+                messages.append({"role": role, "content": entry.get("content", "")})
         
         # Add current message
         messages.append({"role": "user", "content": message})
         
-        # Call Groq API
+        # Call Groq
         completion = self.groq_client.chat.completions.create(
-            model="llama-3.1-70b-versatile",  # FREE on Groq!
+            model="llama-3.1-70b-versatile",
             messages=messages,
-            max_tokens=500,
-            temperature=0.7,
-            top_p=0.9
+            max_tokens=400,
+            temperature=0.7
         )
         
         response_text = completion.choices[0].message.content
         
-        # Record assistant response
+        # Record response
         self.conversation_history.append({
             "timestamp": datetime.now().isoformat(),
             "role": "assistant",
-            "content": response_text,
-            "model": "llama-3.1-70b"
+            "content": response_text
         })
         
-        # Detect if any actions should be suggested
-        actions = self._detect_actions(message, response_text)
+        # Determine if any actions should happen (subtle agency)
+        suggested_action = self._suggest_action(insights)
         
         return {
             "response": response_text,
-            "category": "llm",
-            "actions": actions,
+            "intent": insights["user_intent"],
+            "action": suggested_action,
             "timestamp": datetime.now().isoformat(),
-            "model": "llama-3.1-70b-versatile",
-            "llm_powered": True
+            "augmented": True
         }
     
-    def _get_fallback_response(self, message: str) -> Dict:
-        """Fallback response when LLM is unavailable"""
-        message_lower = message.lower()
+    def _build_context_note(self, insights: Dict) -> str:
+        """Build natural context note for LLM"""
+        notes = []
         
-        # Simple keyword matching
-        if any(word in message_lower for word in ["consolidate", "merge", "combine"]):
-            response = self.fallback_responses["consolidate"]
-            category = "consolidation"
-        elif any(word in message_lower for word in ["upload", "file", "add"]):
-            response = self.fallback_responses["upload"]
-            category = "upload"
-        elif any(word in message_lower for word in ["bonus", "score", "grade", "percent"]):
-            response = self.fallback_responses["bonus"]
-            category = "bonus"
-        elif any(word in message_lower for word in ["download", "result", "get"]):
-            response = self.fallback_responses["download"]
-            category = "results"
-        elif any(word in message_lower for word in ["error", "problem", "issue", "fail", "broken", "not working"]):
-            response = self.fallback_responses["error"]
-            category = "error"
+        if insights["files_uploaded"] > 0:
+            notes.append(f"{insights['files_uploaded']} file(s) uploaded")
+        
+        if insights["session_status"]:
+            status_map = {
+                "uploading": "user is uploading files",
+                "consolidating": "consolidation in progress",
+                "completed": "consolidation complete, results ready",
+                "error": "an error occurred recently"
+            }
+            notes.append(status_map.get(insights["session_status"], insights["session_status"]))
+        
+        if insights["has_results"]:
+            notes.append("download available")
+        
+        if insights["recent_error"]:
+            notes.append(f"recent error: {insights['recent_error']}")
+        
+        return "; ".join(notes) if notes else ""
+    
+    def _suggest_action(self, insights: Dict) -> Optional[str]:
+        """
+        Suggest an action based on context.
+        This enables subtle automation without being obvious.
+        """
+        intent = insights["user_intent"]
+        
+        if intent == "download" and insights["has_results"]:
+            return "show_download"
+        elif intent == "status" and insights["files_uploaded"] > 0:
+            return "show_status"
+        elif intent == "troubleshoot" and insights["recent_error"]:
+            return "show_diagnostics"
+        
+        return None
+    
+    def _get_thoughtful_fallback(self, message: str, insights: Dict) -> Dict:
+        """Thoughtful fallback when LLM unavailable"""
+        intent = insights["user_intent"]
+        
+        # Context-aware responses
+        if intent == "status" and insights["files_uploaded"] > 0:
+            response = f"You have {insights['files_uploaded']} file(s) uploaded. "
+            if insights["session_status"] == "completed":
+                response += "Your results are ready - head to the Results tab to download."
+            elif insights["session_status"] == "consolidating":
+                response += "Consolidation is in progress..."
+            else:
+                response += "When you're ready, hit Consolidate to process them."
+        elif intent in self.fallback_responses:
+            response = self.fallback_responses[intent]
         else:
             response = self.fallback_responses["default"]
-            category = "general"
         
+        # Record
         self.conversation_history.append({
             "timestamp": datetime.now().isoformat(),
             "role": "assistant",
@@ -188,65 +463,37 @@ Remember: You're helping educators save hours of manual work!"""
         
         return {
             "response": response,
-            "category": category,
-            "actions": [],
+            "intent": intent,
+            "action": self._suggest_action(insights),
             "timestamp": datetime.now().isoformat(),
-            "llm_powered": False
+            "augmented": False
         }
-    
-    def _detect_actions(self, message: str, response: str) -> List[str]:
-        """Detect if any actions should be executed based on context"""
-        actions = []
-        combined = (message + " " + response).lower()
-        
-        if "upload" in combined and "how" in message.lower():
-            actions.append("guide_to_upload")
-        if "download" in combined and ("ready" in combined or "result" in combined):
-            actions.append("show_results")
-        if "error" in message.lower() or "problem" in message.lower():
-            actions.append("troubleshoot")
-        
-        return actions
     
     def execute_action(self, action: str, session_id: Optional[str] = None) -> Dict:
-        """Execute recommended actions"""
-        actions_map = {
-            "guide_to_upload": {
-                "action": "guide_upload",
-                "message": "📤 Opening upload guide..."
-            },
-            "show_results": {
-                "action": "show_results", 
-                "message": "📊 Showing your results..."
-            },
-            "troubleshoot": {
-                "action": "troubleshoot",
-                "message": "🔧 Running diagnostics..."
-            }
+        """Execute suggested action (called by frontend if needed)"""
+        actions = {
+            "show_download": {"type": "navigate", "target": "results"},
+            "show_status": {"type": "display", "target": "session_info"},
+            "show_diagnostics": {"type": "display", "target": "error_details"},
+            "trigger_consolidate": {"type": "action", "target": "consolidate"}
         }
-        
-        return actions_map.get(action, {"action": action, "message": "Processing..."})
-    
-    def get_conversation_summary(self) -> Dict:
-        """Get summary of conversation"""
-        return {
-            "total_messages": len(self.conversation_history),
-            "llm_enabled": self.llm_enabled,
-            "model": "llama-3.1-70b-versatile" if self.llm_enabled else "fallback",
-            "last_interaction": self.conversation_history[-1] if self.conversation_history else None
-        }
+        return actions.get(action, {"type": "none"})
     
     def clear_history(self):
         """Clear conversation history"""
         self.conversation_history = []
+        self.session_context = {}
 
+
+# Backwards compatibility alias
+AIAssistant = AugmentedAssistant
 
 # Singleton instance
 _assistant_instance = None
 
-def get_assistant() -> AIAssistant:
-    """Get or create AI assistant instance"""
+def get_assistant() -> AugmentedAssistant:
+    """Get or create assistant instance"""
     global _assistant_instance
     if _assistant_instance is None:
-        _assistant_instance = AIAssistant()
+        _assistant_instance = AugmentedAssistant()
     return _assistant_instance
