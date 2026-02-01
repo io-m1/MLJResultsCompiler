@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Clean Web UI - User-Friendly Design
 Hides technical logic, includes AI Assistant and Design Study sections
