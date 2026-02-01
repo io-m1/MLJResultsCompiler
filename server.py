@@ -79,11 +79,13 @@ def start_bot_thread():
             asyncio.set_event_loop(loop)
             
             async def run_polling_with_retry():
-                """Async polling loop with built-in conflict handling"""
+                """Manual polling loop with explicit Conflict handling"""
                 retry_count = 0
-                max_retries = 10  # More aggressive retries for conflicts
+                max_retries = 10
+                offset = 0
                 
                 while retry_count < max_retries:
+                    application = None
                     try:
                         application = build_application(token)
                         logger.info(f"Building bot application (attempt {retry_count + 1}/{max_retries})...")
@@ -93,76 +95,95 @@ def start_bot_thread():
                         await application.start()
                         logger.info("Bot started")
                         
-                        logger.info("Starting polling...")
-                        await application.updater.start_polling(
-                            allowed_updates=None,
-                            drop_pending_updates=True,
-                            read_timeout=20,
-                            write_timeout=20,
-                            connect_timeout=20,
-                            pool_timeout=20
-                        )
+                        logger.info("Starting manual polling loop...")
                         
-                        logger.info("✓ Bot polling active - listening for updates")
-                        retry_count = 0  # Reset on success
-                        
-                        # Polling will run until stop() is called or error occurs
-                        # Keep thread alive indefinitely
-                        await asyncio.sleep(3600)  # Sleep 1 hour, repeat
+                        # Manual polling loop - gives us full control
+                        while True:
+                            try:
+                                # Manually fetch updates instead of using start_polling()
+                                updates = await application.bot.get_updates(
+                                    offset=offset,
+                                    allowed_updates=None,
+                                    read_timeout=20,
+                                    write_timeout=20,
+                                    connect_timeout=20,
+                                    pool_timeout=20
+                                )
+                                
+                                if updates:
+                                    logger.info(f"✓ Received {len(updates)} update(s)")
+                                    # Process each update through handlers
+                                    for update in updates:
+                                        await application.process_update(update)
+                                        offset = update.update_id + 1
+                                else:
+                                    # No updates, continue polling
+                                    pass
+                                
+                                # Keep retry count reset while polling
+                                if retry_count > 0:
+                                    retry_count = 0
+                                    logger.info("Poll successful - retry counter reset")
+                            
+                            except Conflict as conflict_err:
+                                # Conflict detected - exit inner loop to trigger outer retry
+                                logger.error(f"✗ Conflict in polling loop: {conflict_err}")
+                                raise  # Re-raise to trigger outer exception handler
                     
                     except Conflict as conflict_err:
                         retry_count += 1
                         wait_time = min(3 ** retry_count, 120)  # Exponential: 3, 9, 27, 81, 120s max
-                        logger.error(f"✗ Conflict detected (attempt {retry_count}/{max_retries}): {conflict_err}")
-                        logger.warning(f"  → Another bot instance is running. Waiting {wait_time}s before retry...")
+                        logger.error(f"✗ CONFLICT #{retry_count}/{max_retries}: {conflict_err}")
+                        logger.warning(f"  → Waiting {wait_time}s before retry...")
                         
-                        # Stop current app instance
+                        # Aggressive cleanup
                         try:
-                            if application.updater.running:
-                                await application.updater.stop()
-                            await application.stop()
-                            await application.shutdown()
+                            if application:
+                                try:
+                                    await application.stop()
+                                except:
+                                    pass
+                                try:
+                                    await application.shutdown()
+                                except:
+                                    pass
                         except Exception as e:
                             logger.debug(f"Cleanup error: {e}")
                         
-                        # Wait before retry
                         await asyncio.sleep(wait_time)
                     
                     except (TelegramError, NetworkError) as net_err:
                         retry_count += 1
                         wait_time = min(2 ** retry_count, 60)
-                        logger.warning(f"Network error (attempt {retry_count}/{max_retries}): {type(net_err).__name__}")
+                        logger.warning(f"Network error #{retry_count}: {type(net_err).__name__}: {net_err}")
                         logger.info(f"  → Waiting {wait_time}s before retry...")
                         
                         try:
-                            if application.updater.running:
-                                await application.updater.stop()
-                            await application.stop()
+                            if application:
+                                await application.stop()
                         except:
                             pass
                         
                         await asyncio.sleep(wait_time)
                     
                     except asyncio.CancelledError:
-                        logger.info("Bot polling cancelled")
+                        logger.info("Bot polling cancelled by system")
                         break
                     
                     except Exception as e:
                         retry_count += 1
                         wait_time = min(2 ** retry_count, 60)
-                        logger.error(f"Unexpected error (attempt {retry_count}/{max_retries}): {type(e).__name__}: {e}")
+                        logger.error(f"Polling error #{retry_count}: {type(e).__name__}: {e}")
                         logger.info(f"  → Waiting {wait_time}s before retry...")
                         
                         try:
-                            if application.updater.running:
-                                await application.updater.stop()
-                            await application.stop()
+                            if application:
+                                await application.stop()
                         except:
                             pass
                         
                         await asyncio.sleep(wait_time)
                 
-                # Max retries exceeded
                 logger.error(f"✗ Max retries ({max_retries}) exceeded. Bot will not restart.")
             
             try:
