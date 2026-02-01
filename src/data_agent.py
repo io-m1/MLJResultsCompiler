@@ -507,6 +507,148 @@ class DataAgent:
     def get_action_history(self) -> List[Dict]:
         """Return history of executed actions"""
         return self.action_history
+    
+    # ==================== PREVIEW/DRY-RUN MODES ====================
+    
+    def preview_action(self, action: str, data: pd.DataFrame, params: Dict) -> Dict:
+        """
+        Preview action without modifying original data.
+        Returns before/after comparison.
+        
+        Args:
+            action: Action name
+            data: DataFrame
+            params: Action parameters
+            
+        Returns:
+            Dict with before/after samples and statistics
+        """
+        # Store original state
+        original_shape = data.shape
+        original_columns = list(data.columns)
+        
+        # Execute on copy
+        result = self.execute(action, data.copy(), params)
+        
+        if not result.get("success", False):
+            return {
+                "success": False,
+                "action": action,
+                "error": result.get("error", "Unknown error"),
+                "preview": None
+            }
+        
+        modified_data = result.get("data")
+        
+        # Analyze changes
+        new_columns = list(modified_data.columns)
+        added_columns = [c for c in new_columns if c not in original_columns]
+        removed_columns = [c for c in original_columns if c not in new_columns]
+        
+        preview = {
+            "action": action,
+            "status": "preview_only",
+            "changes": {
+                "shape_before": original_shape,
+                "shape_after": modified_data.shape,
+                "columns_before": original_columns,
+                "columns_after": new_columns,
+                "columns_added": added_columns,
+                "columns_removed": removed_columns
+            },
+            "samples": {
+                "before": data.head(3).to_dict('records') if len(data) > 0 else [],
+                "after": modified_data.head(3).to_dict('records') if len(modified_data) > 0 else []
+            },
+            "statistics": {
+                "rows": len(modified_data),
+                "columns": len(modified_data.columns),
+                "memory_before": f"{data.memory_usage(deep=True).sum() / 1024:.2f} KB",
+                "memory_after": f"{modified_data.memory_usage(deep=True).sum() / 1024:.2f} KB"
+            },
+            "description": result.get("message", "Action executed successfully"),
+            "confirmed": False
+        }
+        
+        return {
+            "success": True,
+            "preview": preview,
+            "action": action
+        }
+    
+    def preview_workflow(self, data: pd.DataFrame, workflow: List[Dict]) -> Dict:
+        """
+        Preview entire workflow without executing.
+        Shows cumulative changes.
+        
+        Args:
+            data: Initial DataFrame
+            workflow: List of action steps
+            
+        Returns:
+            Dict with step-by-step previews
+        """
+        step_previews = []
+        current_data = data.copy()
+        
+        for idx, step in enumerate(workflow):
+            action = step.get("action")
+            params = step.get("params", {})
+            
+            # Preview this step
+            preview = self.preview_action(action, current_data, params)
+            
+            if preview["success"]:
+                step_previews.append({
+                    "step": idx + 1,
+                    "action": action,
+                    "preview": preview["preview"]
+                })
+                # Execute for next iteration
+                result = self.execute(action, current_data, params)
+                if result["success"]:
+                    current_data = result["data"]
+                else:
+                    break
+            else:
+                step_previews.append({
+                    "step": idx + 1,
+                    "action": action,
+                    "error": preview.get("error"),
+                    "preview": None
+                })
+                break
+        
+        return {
+            "success": True,
+            "workflow_preview": {
+                "total_steps": len(workflow),
+                "steps": step_previews,
+                "final_shape": current_data.shape,
+                "confirmed": False
+            }
+        }
+    
+    def execute_confirmed(self, data: pd.DataFrame, workflow: List[Dict], 
+                         confirmed: bool = False) -> Dict:
+        """
+        Execute workflow only if confirmed.
+        Shows preview first, then executes on confirmation.
+        
+        Args:
+            data: Initial DataFrame
+            workflow: List of action steps
+            confirmed: Whether user confirmed the preview
+            
+        Returns:
+            Either preview or execution result
+        """
+        if not confirmed:
+            # Show preview first
+            return self.preview_workflow(data, workflow)
+        
+        # User confirmed - execute
+        return self.execute_workflow(data, workflow)
 
 
 # Singleton instance
