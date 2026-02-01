@@ -55,16 +55,35 @@ def start_bot_thread():
             try:
                 application = build_application(token)
                 logger.info("Starting Telegram bot polling...")
-                # run_polling() creates its own event loop internally
-                application.run_polling(
+                # Use start/updater.start_polling instead of run_polling() to avoid
+                # signal handler registration (can only be done from main thread)
+                loop.run_until_complete(application.initialize())
+                loop.run_until_complete(application.start())
+                logger.info("Bot application started")
+                
+                # Start the updater (handles incoming updates)
+                loop.run_until_complete(application.updater.start_polling(
                     allowed_updates=None,
                     drop_pending_updates=False,
                     read_timeout=20,
                     write_timeout=20,
                     connect_timeout=20,
                     pool_timeout=20
-                )
+                ))
+                
+                logger.info("Bot polling active")
+                # Keep the loop running indefinitely
+                loop.run_forever()
+            except asyncio.CancelledError:
+                logger.info("Bot polling cancelled")
             finally:
+                # Graceful shutdown sequence
+                try:
+                    loop.run_until_complete(application.updater.stop())
+                    loop.run_until_complete(application.stop())
+                    loop.run_until_complete(application.shutdown())
+                except Exception as shutdown_err:
+                    logger.warning(f"Shutdown error: {shutdown_err}")
                 loop.close()
         except Exception as e:
             logger.error(f"Fatal error in bot: {e}", exc_info=True)
