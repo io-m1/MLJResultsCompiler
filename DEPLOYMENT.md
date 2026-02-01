@@ -68,7 +68,10 @@ Before deploying, click **Advanced** and add:
 TELEGRAM_BOT_TOKEN = 8444096191:AAGNqie79FQ0oixHOgPX-oh2EwlnkDRSq-I
 WEBHOOK_SECRET = generate-random-string-use-this
 WEBHOOK_BASE_URL = https://mlj-bot.onrender.com (update after deploy)
+ENABLE_KEEP_ALIVE = true (prevents free tier sleep - IMPORTANT!)
 ```
+
+**Note:** The `ENABLE_KEEP_ALIVE=true` setting is critical for free tier deployments to prevent hibernation after 15 minutes of inactivity.
 
 ### Step 6: Deploy
 - Click **Create Web Service**
@@ -181,6 +184,11 @@ WEBHOOK_BASE_URL
 # Your Render service URL
 # Format: https://your-app-name.onrender.com
 # Example: https://mlj-bot.onrender.com
+
+ENABLE_KEEP_ALIVE
+# Set to "true" to prevent free tier hibernation (RECOMMENDED)
+# Set to "false" only if on paid tier or using external monitoring
+# Default: true
 ```
 
 ### Optional
@@ -188,7 +196,10 @@ WEBHOOK_BASE_URL
 PORT=8000                          # Usually auto-set by Render
 LOG_LEVEL=INFO                     # DEBUG, INFO, WARNING, ERROR
 MAX_SESSION_LIFETIME=86400         # Session timeout (seconds)
+KEEP_ALIVE_INTERVAL=840            # Keep-alive ping interval (14 minutes default)
 ```
+
+**Important:** For free tier deployments, always set `ENABLE_KEEP_ALIVE=true` to prevent the service from hibernating after 15 minutes of inactivity.
 
 ---
 
@@ -228,12 +239,55 @@ curl https://mlj-bot.onrender.com/
 
 ## TROUBLESHOOTING
 
+### Problem: Bot goes to sleep / hibernates (FREE TIER ISSUE)
+**Symptoms:**
+- First message after inactivity takes 10-30 seconds to respond
+- Bot seems "asleep" or unresponsive
+- Works fine after the first interaction
+
+**Root Cause:**
+Free tier hosting (Render, Railway, etc.) automatically spins down services after 15 minutes of inactivity to save resources.
+
+**Solutions (Multiple Options):**
+
+**Option 1: Built-in Keep-Alive (Recommended - Already Implemented)**
+The bot now includes automatic self-ping functionality:
+- Enabled by default via `ENABLE_KEEP_ALIVE=true`
+- Pings the health endpoint every 14 minutes
+- Prevents the service from sleeping
+- No external service needed
+
+**Option 2: External Monitoring Service (Alternative)**
+Use a free monitoring service to ping your bot:
+- [UptimeRobot](https://uptimerobot.com/) - Free, pings every 5 minutes
+- [Cron-Job.org](https://cron-job.org/) - Free, configurable intervals
+- Setup: Monitor `https://your-app.onrender.com/health` with GET requests every 10-14 minutes
+
+**Option 3: Upgrade to Paid Tier**
+- Render Starter plan ($7/month) keeps service always active
+- No sleep, instant responses
+- Recommended for production use with multiple users
+
+**Option 4: Disable Keep-Alive (If Using External Monitoring)**
+If using external monitoring, set in environment variables:
+```
+ENABLE_KEEP_ALIVE=false
+```
+
+**Monitoring the Keep-Alive:**
+Check logs for these messages:
+```
+✅ Keep-alive task started to prevent hibernation
+Keep-alive ping successful at 2026-02-01 10:30:00
+```
+
 ### Problem: Bot not responding to commands
 **Solution:**
 1. Check Render logs: **Settings** → **Logs**
 2. Verify webhook URL is correct
 3. Verify TELEGRAM_BOT_TOKEN is valid
 4. Check error messages in logs
+5. Ensure ENABLE_KEEP_ALIVE is set to true (free tier)
 
 ### Problem: File upload fails
 **Solution:**

@@ -4,6 +4,8 @@ Intelligent conversational document processing bot with advanced test consolidat
 
 **Status:** Production-ready - All tests passing (91.3% pass rate)
 
+⚡ **NEW:** Built-in hibernation prevention for free tier hosting - bot stays responsive 24/7!
+
 ## 🌟 Features
 
 ### Core Capabilities
@@ -60,6 +62,11 @@ The bot now understands natural language! Try:
 - `/help` - Show help information
 - `/consolidate` - Process uploaded files
 - `/cancel` - Cancel current operation
+
+**Important for Free Tier Deployment:**
+- Set `ENABLE_KEEP_ALIVE=true` in your environment variables
+- This prevents the bot from sleeping after 15 minutes of inactivity
+- See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed setup instructions
 
 **Deploy bot:** See [DEPLOYMENT.md](DEPLOYMENT.md)
 
