@@ -67,6 +67,15 @@ class AugmentedAssistant:
             except Exception as e:
                 logger.warning(f"Self-healing init failed: {e}")
         
+        # Initialize Data Agent for agentic actions
+        self.data_agent = None
+        try:
+            from src.data_agent import get_data_agent
+            self.data_agent = get_data_agent()
+            logger.info("✓ Data Agent attached - can execute data transformations")
+        except Exception as e:
+            logger.warning(f"Data Agent init failed: {e}")
+        
         # Initialize Groq
         api_key = os.getenv("GROQ_API_KEY")
         if GROQ_AVAILABLE and api_key:
@@ -82,7 +91,8 @@ class AugmentedAssistant:
         # System prompts for different modes
         self.system_prompts = {
             "consolidation": self._get_consolidation_prompt(),
-            "cold_email": self._get_cold_email_prompt()
+            "cold_email": self._get_cold_email_prompt(),
+            "data_agent": self._get_data_agent_prompt()
         }
         
         # Thoughtful fallback responses
@@ -93,8 +103,49 @@ class AugmentedAssistant:
             "download": "Once consolidation is done, your results will be in the Results tab. Just click Download.",
             "error": "Sorry you're running into trouble. What exactly happened?",
             "cold_email": "I can help generate precision cold emails. Please provide:\n• Recipient name & company\n• Their role/focus\n• What you're offering\n• Your credentials\n• Any research links",
+            "data_action": "I can modify your consolidated data. Try asking me to:\n• Add random scores\n• Add grades or pass/fail status\n• Collate scores\n• Add rankings\n• Filter or sort data",
             "default": "I'm here to help! What do you need?"
         }
+    
+    def _get_data_agent_prompt(self) -> str:
+        """System prompt for data manipulation mode"""
+        return """You are an Augmented Intelligence assistant with DATA MANIPULATION capabilities.
+
+You can EXECUTE real changes on consolidated data. When the user asks you to modify data, you:
+1. Understand their request
+2. Determine the right action(s) 
+3. EXECUTE the changes
+4. Report what you did
+
+AVAILABLE ACTIONS:
+- add_random_scores: Add random scores (0-100) to a new column
+- add_grades: Add letter grades (A/B/C/D/F) based on a score column
+- add_pass_fail: Add PASSED/FAILED status based on threshold (default 60)
+- collate_scores: Sum or average multiple score columns
+- calculate_bonus: Apply MLJ participation bonus (5-15%)
+- add_rank: Add rankings based on scores
+- add_column: Add a new column with a default value
+- remove_column: Remove a column
+- rename_column: Rename a column
+- filter_data: Filter rows by condition
+- sort_data: Sort by a column
+
+When responding to data modification requests:
+1. First confirm what you understood
+2. List the action(s) you'll take
+3. Execute them
+4. Report results with stats
+
+OUTPUT FORMAT for data requests (return as JSON):
+{
+  "understood": "What you understood the user wants",
+  "actions": [
+    {"action": "action_name", "params": {...}}
+  ],
+  "execute": true
+}
+
+If the request is unclear, ask for clarification. Be helpful, not robotic."""
     
     def _get_consolidation_prompt(self) -> str:
         return """You are an Augmented Intelligence assistant for the MLJ Results Compiler - helping educators consolidate student test results.
@@ -358,6 +409,22 @@ Output strictly in JSON format."""
         """Detect user intent from message"""
         message_lower = message.lower()
         
+        # DATA MANIPULATION intents (check first - these are agentic actions)
+        data_action_keywords = [
+            "add column", "add a column", "new column",
+            "random score", "randomly score", "generate score",
+            "add grade", "grade them", "letter grade",
+            "pass fail", "passed failed", "pass or fail",
+            "collate", "sum score", "total score", "average score",
+            "add rank", "ranking", "rank them",
+            "remove column", "delete column",
+            "rename column",
+            "filter", "sort", "order by",
+            "modify", "change", "update", "adjust"
+        ]
+        if any(kw in message_lower for kw in data_action_keywords):
+            return "data_action"
+        
         # Cold email related intents
         if any(w in message_lower for w in ["cold email", "email", "outreach", "pitch", "reach out"]):
             return "cold_email"
@@ -517,6 +584,174 @@ Output strictly in JSON format."""
         }
         return actions.get(action, {"type": "none"})
     
+    # ==================== AGENTIC DATA MANIPULATION ====================
+    
+    def parse_data_request(self, message: str) -> Dict:
+        """
+        Parse natural language into data agent actions.
+        Returns structured action plan.
+        """
+        message_lower = message.lower()
+        actions = []
+        
+        # Pattern matching for common requests
+        if any(kw in message_lower for kw in ["random score", "randomly score", "generate score"]):
+            column_name = "Random_Score"
+            # Try to extract custom column name
+            if "column" in message_lower and "called" in message_lower:
+                parts = message_lower.split("called")
+                if len(parts) > 1:
+                    column_name = parts[1].strip().split()[0].replace('"', '').replace("'", "")
+            
+            actions.append({
+                "action": "add_random_scores",
+                "params": {"column_name": column_name, "min_score": 0, "max_score": 100}
+            })
+        
+        if any(kw in message_lower for kw in ["add grade", "letter grade", "grade them"]):
+            # Need to find score column - will use last added or specified
+            score_col = self._find_score_column_in_request(message)
+            actions.append({
+                "action": "add_grades",
+                "params": {"score_column": score_col, "grade_column": "Grade"}
+            })
+        
+        if any(kw in message_lower for kw in ["pass fail", "passed failed", "pass or fail"]):
+            score_col = self._find_score_column_in_request(message)
+            threshold = 60
+            # Try to extract threshold
+            import re
+            threshold_match = re.search(r'threshold[:\s]+(\d+)', message_lower)
+            if threshold_match:
+                threshold = int(threshold_match.group(1))
+            
+            actions.append({
+                "action": "add_pass_fail",
+                "params": {"score_column": score_col, "result_column": "Status", "threshold": threshold}
+            })
+        
+        if any(kw in message_lower for kw in ["collate", "sum score", "total score", "average"]):
+            method = "average" if "average" in message_lower else "sum"
+            actions.append({
+                "action": "collate_scores",
+                "params": {"method": method, "result_column": "Total_Score"}
+            })
+        
+        if any(kw in message_lower for kw in ["add rank", "ranking", "rank them"]):
+            score_col = self._find_score_column_in_request(message)
+            actions.append({
+                "action": "add_rank",
+                "params": {"score_column": score_col, "rank_column": "Rank"}
+            })
+        
+        if any(kw in message_lower for kw in ["calculate bonus", "apply bonus", "participation bonus"]):
+            score_col = self._find_score_column_in_request(message)
+            actions.append({
+                "action": "calculate_bonus",
+                "params": {"score_column": score_col}
+            })
+        
+        if "sort" in message_lower or "order by" in message_lower:
+            col = self._find_column_in_request(message)
+            ascending = "descending" not in message_lower and "highest" not in message_lower
+            actions.append({
+                "action": "sort_data",
+                "params": {"column": col, "ascending": ascending}
+            })
+        
+        return {
+            "understood": message,
+            "actions": actions,
+            "execute": len(actions) > 0
+        }
+    
+    def _find_score_column_in_request(self, message: str) -> str:
+        """Try to identify which score column the user is referring to"""
+        message_lower = message.lower()
+        
+        # Common patterns
+        if "random" in message_lower:
+            return "Random_Score"
+        if "total" in message_lower:
+            return "Total_Score"
+        if "bonus" in message_lower:
+            return "Bonus_Score"
+        
+        # Default to Score
+        return "Score"
+    
+    def _find_column_in_request(self, message: str) -> str:
+        """Try to identify column name from request"""
+        # Default
+        return "Score"
+    
+    def execute_data_actions(self, session_id: str, actions: List[Dict]) -> Dict:
+        """
+        Execute data manipulation actions on consolidated data.
+        This is the TRUE AGENTIC capability - the AI actually modifies data.
+        
+        Args:
+            session_id: Session with consolidated data
+            actions: List of {"action": str, "params": Dict}
+            
+        Returns:
+            Result with modified data path
+        """
+        import pandas as pd
+        
+        if not self.data_agent:
+            return {
+                "success": False,
+                "error": "Data agent not available"
+            }
+        
+        # Get the consolidated data from session context
+        result_path = self.session_context.get("result_path")
+        
+        if not result_path:
+            return {
+                "success": False,
+                "error": "No consolidated data found. Please consolidate files first."
+            }
+        
+        try:
+            # Load the data
+            data = pd.read_excel(result_path)
+            original_columns = list(data.columns)
+            original_rows = len(data)
+            
+            # Execute workflow
+            result = self.data_agent.execute_workflow(data, actions)
+            
+            if result["success"]:
+                # Save the modified data
+                modified_data = result["data"]
+                modified_data.to_excel(result_path, index=False)
+                
+                return {
+                    "success": True,
+                    "message": result["message"],
+                    "step_results": result["step_results"],
+                    "stats": {
+                        "original_columns": original_columns,
+                        "new_columns": list(modified_data.columns),
+                        "columns_added": [c for c in modified_data.columns if c not in original_columns],
+                        "rows": len(modified_data)
+                    },
+                    "path": result_path
+                }
+            else:
+                return result
+                
+        except Exception as e:
+            logger.error(f"Data action execution failed: {e}")
+            if self.healing_engine:
+                self.healing_engine.log_error(e, {"session_id": session_id, "actions": actions}, "data_agent")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     def clear_history(self):
         """Clear conversation history"""
         self.conversation_history = []
@@ -530,6 +765,7 @@ Output strictly in JSON format."""
         base_report = {
             "assistant_status": "operational",
             "llm_enabled": self.llm_enabled,
+            "data_agent_available": self.data_agent is not None,
             "mode": self.current_mode,
             "conversation_count": len(self.conversation_history),
             "timestamp": datetime.now().isoformat()

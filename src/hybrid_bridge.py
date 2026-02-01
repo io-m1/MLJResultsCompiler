@@ -448,3 +448,146 @@ async def ai_logs(hours: int = Query(24, description="Hours of logs to retrieve"
     }
     
     return logs
+
+
+# ==================== AGENTIC DATA MANIPULATION ====================
+
+@router.post("/data-action/{session_id}")
+async def execute_data_action(session_id: str, request: Request):
+    """
+    Execute data manipulation actions on consolidated data.
+    
+    This is TRUE AGENTIC capability - the AI modifies data based on natural language.
+    
+    Request body can be either:
+    1. Natural language: {"message": "Add random scores and grade them pass/fail"}
+    2. Direct actions: {"actions": [{"action": "add_random_scores", "params": {...}}]}
+    """
+    record_activity()
+    
+    if session_id not in UPLOAD_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session = UPLOAD_SESSIONS[session_id]
+    
+    if session.get("status") != "completed" or not session.get("consolidation_result"):
+        return {
+            "success": False,
+            "error": "No consolidated data available. Please consolidate files first."
+        }
+    
+    try:
+        body = await request.json()
+        assistant = get_assistant()
+        
+        # Pass session context including result path
+        result_info = session["consolidation_result"]
+        assistant.session_context = {
+            "files_count": len(session.get("files", [])),
+            "status": session.get("status"),
+            "has_results": True,
+            "result_path": result_info.get("path")
+        }
+        
+        # Determine if natural language or direct actions
+        if "message" in body:
+            # Parse natural language into actions
+            message = body["message"]
+            parsed = assistant.parse_data_request(message)
+            
+            if not parsed["execute"] or not parsed["actions"]:
+                return {
+                    "success": False,
+                    "error": "Could not understand the data modification request",
+                    "understood": parsed["understood"],
+                    "hint": "Try: 'Add random scores', 'Add grades based on Score', 'Add pass/fail status'"
+                }
+            
+            actions = parsed["actions"]
+        else:
+            # Direct actions provided
+            actions = body.get("actions", [])
+        
+        if not actions:
+            return {
+                "success": False,
+                "error": "No actions specified"
+            }
+        
+        # Execute the actions
+        result = assistant.execute_data_actions(session_id, actions)
+        
+        if result["success"]:
+            # Update session with modification info
+            session["last_modification"] = {
+                "timestamp": datetime.now().isoformat(),
+                "actions": [a["action"] for a in actions],
+                "columns_added": result.get("stats", {}).get("columns_added", [])
+            }
+        
+        return result
+        
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "trace": traceback.format_exc()
+        }
+
+
+@router.get("/data-actions")
+async def get_available_data_actions():
+    """Get list of available data manipulation actions"""
+    record_activity()
+    
+    try:
+        from src.data_agent import get_data_agent
+        agent = get_data_agent()
+        return {
+            "success": True,
+            "actions": agent.get_available_actions(),
+            "examples": [
+                {"message": "Add random scores to each participant"},
+                {"message": "Add letter grades based on Score column"},
+                {"message": "Add pass/fail status with threshold 60"},
+                {"message": "Collate all score columns and get the average"},
+                {"message": "Add rankings based on Total_Score"},
+                {"message": "Sort by Score descending"},
+                {"message": "Apply participation bonus based on tests taken"}
+            ]
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/data-preview/{session_id}")
+async def preview_data(session_id: str, rows: int = Query(10, description="Number of rows to preview")):
+    """Preview consolidated data (first N rows)"""
+    record_activity()
+    
+    if session_id not in UPLOAD_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session = UPLOAD_SESSIONS[session_id]
+    
+    if session.get("status") != "completed" or not session.get("consolidation_result"):
+        return {
+            "success": False,
+            "error": "No consolidated data available"
+        }
+    
+    try:
+        import pandas as pd
+        result_path = session["consolidation_result"]["path"]
+        data = pd.read_excel(result_path)
+        
+        return {
+            "success": True,
+            "total_rows": len(data),
+            "columns": list(data.columns),
+            "preview": data.head(rows).to_dict(orient="records"),
+            "last_modification": session.get("last_modification")
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
