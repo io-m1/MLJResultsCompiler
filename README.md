@@ -1,53 +1,54 @@
 # MLJ Results Compiler
 
-**Production-grade Excel consolidation, grading, and reporting system.**
+**Excel consolidation and grading system for educational results.**
 
-Version: 0.2.0 | Status: Alpha (Active Refactoring) | License: MIT
+Version: 0.2.0 | Status: **Alpha** | License: MIT
 
-## Key Features
+## What This Does
 
-- **Telegram Bot + Web Mini App** - Dual interface access
-- **Automatic Consolidation** - Email-matched result merging
-- **Participation Bonuses** - Grade 6 intelligent bonus calculation
-- **Clean UI Design** - Technical logic hidden from users
-- **AI Assistant** - Conversational analysis and support
-- **Design Study Section** - Non-technical model explanation
-- **Session Management** - Keepalive prevents hibernation
-- **Deployment Ready** - Auto-deploy to Render
+Takes messy Excel results from multiple sources, consolidates by email, applies business rules (bonuses, pass/fail), and delivers results via:
+- **Telegram Bot** (real-time, mobile-friendly)
+- **Web UI** (upload/download interface)
+
+**Current Maturity:** Core pipeline works. Ready for low-volume use. Not yet enterprise-hardened.
+
+## Proven Features ✅
+
+- ✅ Email-matched consolidation (core logic)
+- ✅ Participation bonus calculation (Grade 6)
+- ✅ Clean web UI (simple upload/download)
+- ✅ Telegram bot interface (command-driven)
+- ✅ Session persistence (survives restarts)
+- ✅ Automated CI/CD testing (GitHub Actions)
+
+## Not Yet Ready ⚠️
+
+- ❌ AI features (optional, feature-flagged, incomplete)
+- ❌ Enterprise security (audit in progress)
+- ❌ High-volume concurrency (tested for small schools)
+- ❌ 100% test coverage (60% currently)
 
 ## Quick Start
 
 ### Via Telegram
-1. Find `@mlj_results_compiler_bot` on Telegram
-2. `/start` to begin
-3. Upload Excel files
-4. Consolidation happens automatically
-5. Download results
+```
+1. @mlj_results_compiler_bot on Telegram
+2. /start
+3. Send Excel files
+4. Results ready immediately
+```
 
-### Via Web App
-1. Visit https://mljresultscompiler.onrender.com
-2. Upload tab → Select files
-3. Click "Consolidate Files"
-4. Download from Results tab
+### Via Web
+```
+Visit: https://mljresultscompiler.onrender.com
+Upload → Consolidate → Download
+```
 
-### Local Testing
+### Local Development
 ```bash
 pip install -r requirements.txt
-python test_web_live.py    # Run comprehensive tests
+python -m pytest tests/
 ```
-
-## Pre-Deployment
-
-```bash
-# Verify build before deploying
-.\verify-build.ps1
-```
-
-## Project Structure
-
-```
-src/
-  web_ui_clean.py         # Clean web UI (4 tabs)
   ai_assistant.py         # Conversational AI
   hybrid_bridge.py        # Session-based API
   excel_processor.py      # Data consolidation

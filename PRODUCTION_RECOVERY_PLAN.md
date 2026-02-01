@@ -9,11 +9,16 @@
 ## 📊 Overall Progress
 
 ```
-TIER 1: Hard Audit + Core Hardening
+TIER 1: Hard Audit + Ruthless Cleanup
   [===================] 100% COMPLETE ✅
+  - 2000+ lines of duplicate/test debt deleted
+  - Unprovable claims removed from docs
+  - Single implementations kept
+  - Honest status established
   
 TIER 2: Architecture Refactor  
   [========           ] 40% (stubs in place)
+  - Real user testing to begin
   
 TIER 3: Security Deep-Dive
   [====               ] 20% (checklist created)
