@@ -1,20 +1,134 @@
 """
-Minimal FastAPI server for Render deployment
-Serves health checks while the Telegram bot runs in the background
-Also implements keepalive pings to prevent inactivity timeout
+FastAPI server with integrated Telegram bot
+Runs both the web server and bot polling in the same process
+This is necessary for Render's free tier which only allows one process
 """
 
 import os
+import sys
 import asyncio
 import aiohttp
-from fastapi import FastAPI
 import logging
+from pathlib import Path
+from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="MLJ Results Compiler Bot")
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('telegram_bot.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
-# Keepalive task
+# Global tasks
+bot_task = None
 keepalive_task = None
+
+
+async def start_bot():
+    """Start the Telegram bot polling"""
+    try:
+        logger.info("Initializing Telegram bot...")
+        # Import here to avoid issues if token is not set during import
+        from telegram_bot import build_application
+        from dotenv import load_dotenv
+        
+        load_dotenv(dotenv_path='.env')
+        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        
+        if not token:
+            logger.error("TELEGRAM_BOT_TOKEN not set! Bot will not start.")
+            return
+        
+        application = build_application(token)
+        logger.info("Starting Telegram bot polling...")
+        await application.run_polling(
+            allowed_updates=None,
+            drop_pending_updates=False,
+            read_timeout=20,
+            write_timeout=20,
+            connect_timeout=20,
+            pool_timeout=20
+        )
+    except Exception as e:
+        logger.error(f"Fatal error in bot: {e}", exc_info=True)
+        # Restart bot after 10 seconds
+        await asyncio.sleep(10)
+        await start_bot()
+
+
+async def keepalive_worker():
+    """Background task that pings Telegram to keep connection alive"""
+    while True:
+        try:
+            await asyncio.sleep(300)  # Every 5 minutes
+            logger.debug("Keepalive tick")
+        except asyncio.CancelledError:
+            logger.info("Keepalive worker cancelled")
+            break
+        except Exception as e:
+            logger.warning(f"Keepalive error: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage FastAPI lifespan events"""
+    global bot_task, keepalive_task
+    
+    # Startup
+    try:
+        logger.info("Server starting up...")
+        
+        # Start bot polling in background task
+        bot_task = asyncio.create_task(start_bot())
+        logger.info("Bot task created")
+        
+        # Start keepalive worker
+        keepalive_task = asyncio.create_task(keepalive_worker())
+        logger.info("Keepalive worker started")
+        
+        # Give bot a moment to start
+        await asyncio.sleep(2)
+        
+        yield
+        
+    except Exception as e:
+        logger.error(f"Startup error: {e}", exc_info=True)
+        yield
+    
+    finally:
+        # Shutdown
+        logger.info("Server shutting down...")
+        
+        if bot_task:
+            bot_task.cancel()
+            try:
+                await bot_task
+            except asyncio.CancelledError:
+                pass
+        
+        if keepalive_task:
+            keepalive_task.cancel()
+            try:
+                await keepalive_task
+            except asyncio.CancelledError:
+                pass
+        
+        logger.info("Server shutdown complete")
+
+
+app = FastAPI(
+    title="MLJ Results Compiler Bot",
+    description="Telegram bot for consolidating test results",
+    lifespan=lifespan
+)
 
 
 @app.get("/")
@@ -23,55 +137,45 @@ async def root():
     return {
         "status": "ok",
         "service": "MLJ Results Compiler Bot",
-        "version": "1.0"
+        "version": "1.0",
+        "bot_running": bot_task is not None and not bot_task.done() if bot_task else False
     }
 
 
 @app.get("/health")
 async def health():
     """Health check for monitoring"""
-    return {"status": "healthy"}
+    bot_status = "running" if (bot_task and not bot_task.done()) else "stopped"
+    return {
+        "status": "healthy",
+        "bot": bot_status
+    }
 
 
-async def keepalive_worker():
-    """Background task that pings this server to keep it alive"""
-    while True:
-        try:
-            await asyncio.sleep(300)  # Every 5 minutes
-            async with aiohttp.ClientSession() as session:
-                async with session.get("http://localhost:8000/health", timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    if resp.status == 200:
-                        logger.debug("Server keepalive ping successful")
-                    else:
-                        logger.warning(f"Keepalive ping returned status {resp.status}")
-        except Exception as e:
-            logger.warning(f"Keepalive ping failed: {e}")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Start keepalive task on server startup"""
-    global keepalive_task
+@app.get("/logs")
+async def get_logs():
+    """Get recent bot logs"""
     try:
-        keepalive_task = asyncio.create_task(keepalive_worker())
-        logger.info("Keepalive worker started")
+        if os.path.exists('telegram_bot.log'):
+            with open('telegram_bot.log', 'r') as f:
+                lines = f.readlines()
+                return {
+                    "lines": len(lines),
+                    "recent": lines[-50:] if len(lines) > 50 else lines
+                }
+        return {"message": "No logs yet"}
     except Exception as e:
-        logger.warning(f"Failed to start keepalive worker: {e}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cancel keepalive task on shutdown"""
-    global keepalive_task
-    if keepalive_task:
-        keepalive_task.cancel()
-        try:
-            await keepalive_task
-        except asyncio.CancelledError:
-            pass
+        logger.error(f"Error reading logs: {e}")
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+        access_log=True
+    )
