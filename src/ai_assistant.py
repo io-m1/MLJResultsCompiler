@@ -1,176 +1,244 @@
+# -*- coding: utf-8 -*-
 """
-AI Assistant for conversational analysis and complaint handling
-Provides intelligent responses to user queries and executes actions
+AI Assistant powered by Groq LLM (Llama 3.1 70B)
+Provides intelligent, context-aware responses to user queries
+FREE tier: ~30 requests/minute
 """
 
-import json
+import os
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
+logger = logging.getLogger(__name__)
+
+# Try to import Groq, fallback to simple mode if not available
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    logger.warning("Groq not installed, using fallback mode")
+
+
 class AIAssistant:
-    """Simple but effective AI assistant for user interactions"""
+    """LLM-powered AI assistant with Groq backend"""
     
     def __init__(self):
-        self.conversation_history = []
-        self.knowledge_base = {
-            "consolidation": {
-                "keywords": ["consolidate", "merge", "combine", "upload", "process"],
-                "response": "I can help you consolidate your test files! Here's what happens:\n1️⃣ Upload your Excel files\n2️⃣ I'll merge all the data\n3️⃣ Bonuses calculated automatically\n4️⃣ Download your consolidated sheet",
-                "actions": ["guide_to_upload", "show_supported_formats"]
-            },
-            "results": {
-                "keywords": ["result", "download", "excel", "sheet", "file"],
-                "response": "Your results are ready! You can:\n📥 Download the consolidated XLSX file\n📊 View statistics and bonuses\n📤 Share with colleagues\nClick 'Download' to get your file.",
-                "actions": ["show_results", "initiate_download"]
-            },
-            "bonus": {
-                "keywords": ["bonus", "score", "grade", "calculate", "percentage"],
-                "response": "The system automatically calculates participation bonuses:\n✅ More tests = Higher bonus\n📈 Performance percentile matters\n🎯 Grade 6: Up to 15% bonus\n💡 Rewards consistent participation",
-                "actions": ["explain_bonus_system"]
-            },
-            "error": {
-                "keywords": ["error", "problem", "issue", "fail", "broken", "not working", "undefined"],
-                "response": "I see there's an issue. Let me help!\n🔍 I'm diagnosing the problem\n⚙️ Checking your files\n🛠️ Attempting to fix it\nPlease wait a moment...",
-                "actions": ["troubleshoot", "retry_consolidation"]
-            },
-            "feature": {
-                "keywords": ["feature", "what can", "how do", "can you", "do you"],
-                "response": "I can help with:\n📤 Upload test files (XLSX, CSV)\n🔄 Consolidate multiple files\n📊 Calculate bonuses automatically\n📥 Download formatted results\n💬 Answer your questions\nWhat would you like to do?",
-                "actions": []
-            },
-            "design": {
-                "keywords": ["design", "study", "how works", "understand", "explain", "works"],
-                "response": "Great question! Here's the design:\n📥 Input: Multiple test files in any format\n🔄 Process: Intelligent merging and analysis\n🎯 Logic: Bonuses, scoring, percentiles\n📤 Output: Clean, professional spreadsheet\n🌟 Benefit: Save hours of manual work!\nVisit the Design Study section to learn more.",
-                "actions": []
-            }
+        self.conversation_history: List[Dict] = []
+        self.groq_client = None
+        self.llm_enabled = False
+        
+        # Initialize Groq if API key is available
+        api_key = os.getenv("GROQ_API_KEY")
+        if GROQ_AVAILABLE and api_key:
+            try:
+                self.groq_client = Groq(api_key=api_key)
+                self.llm_enabled = True
+                logger.info("✓ Groq LLM initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Groq: {e}")
+        else:
+            logger.warning("GROQ_API_KEY not set, using fallback mode")
+        
+        # System prompt for the LLM
+        self.system_prompt = """You are an intelligent AI assistant for the MLJ Results Compiler - a tool that helps educators consolidate and analyze student test results.
+
+YOUR CAPABILITIES:
+📤 Help users upload test files (XLSX, CSV formats)
+🔄 Guide consolidation of multiple test files into one
+📊 Explain the bonus calculation system
+📥 Assist with downloading processed results
+🛠️ Troubleshoot issues and errors
+🎓 Explain how the system works
+
+BONUS SYSTEM (Grade 6):
+- 1-2 tests participated: 5% bonus
+- 3-5 tests participated: 10% bonus  
+- 6+ tests participated: 15% bonus
+Bonuses reward consistent participation and improve final scores.
+
+HOW IT WORKS:
+1. User uploads multiple test result Excel files
+2. System merges all data intelligently
+3. Calculates participation bonuses automatically
+4. Generates a clean, professional consolidated spreadsheet
+5. User downloads the final result
+
+COMMUNICATION STYLE:
+- Be helpful, friendly, and concise
+- Use emojis sparingly but effectively
+- Provide step-by-step guidance when needed
+- If user reports an error, be empathetic and offer solutions
+- Keep responses focused and actionable
+
+Remember: You're helping educators save hours of manual work!"""
+
+        # Fallback knowledge base (used when LLM is unavailable)
+        self.fallback_responses = {
+            "consolidate": "🔧 I can help you consolidate your test files!\n\n1️⃣ Upload your Excel files\n2️⃣ Click 'Consolidate Files'\n3️⃣ Wait for processing\n4️⃣ Download your result\n\nNeed more help?",
+            "upload": "📤 To upload files:\n\n1. Click the upload area or drag files\n2. Select your XLSX or CSV files\n3. You can upload multiple files at once\n4. Click 'Consolidate' when ready",
+            "bonus": "💰 Bonus System:\n\n📊 Grade 6 Participation Bonus:\n• 1-2 tests: +5%\n• 3-5 tests: +10%\n• 6+ tests: +15%\n\nThe more tests a student takes, the higher their bonus!",
+            "download": "📥 To download results:\n\n1. Complete the consolidation first\n2. Go to the Results tab\n3. Click the 'Download' button\n4. Your XLSX file will download",
+            "error": "🛠️ Let me help troubleshoot!\n\nCommon fixes:\n• Refresh the page and try again\n• Check your file format (XLSX/CSV)\n• Ensure files have valid data\n• Try uploading one file at a time\n\nStill stuck? Describe the issue!",
+            "default": "👋 I'm your AI assistant! I can help with:\n\n• 📤 Uploading test files\n• 🔄 Consolidating results\n• 📊 Understanding bonuses\n• 📥 Downloading results\n• 🛠️ Troubleshooting\n\nWhat would you like to do?"
         }
     
     def analyze_message(self, message: str, session_id: Optional[str] = None) -> Dict:
         """Analyze user message and provide intelligent response"""
-        message_lower = message.lower().strip()
         
         # Record interaction
         self.conversation_history.append({
             "timestamp": datetime.now().isoformat(),
-            "message": message,
+            "role": "user",
+            "content": message,
             "session_id": session_id
         })
         
-        # Find matching category
-        matched_category = None
-        best_match_score = 0
-        
-        for category, details in self.knowledge_base.items():
-            for keyword in details["keywords"]:
-                if keyword in message_lower:
-                    score = len(keyword)  # Longer matches are better
-                    if score > best_match_score:
-                        best_match_score = score
-                        matched_category = category
-        
-        # Generate response
-        if matched_category:
-            response = self.knowledge_base[matched_category]["response"]
-            actions = self.knowledge_base[matched_category]["actions"]
+        # Try LLM first, fallback if unavailable
+        if self.llm_enabled:
+            try:
+                response = self._get_llm_response(message)
+                return response
+            except Exception as e:
+                logger.error(f"LLM error: {e}, using fallback")
+                return self._get_fallback_response(message)
         else:
-            # Default helpful response
-            response = f"I understand you're asking about '{message[:40]}...'.\n\n💡 I can help with:\n• Uploading and consolidating files\n• Calculating bonuses\n• Downloading results\n• Understanding how everything works\n\nWhat specifically would you like to do?"
-            actions = []
+            return self._get_fallback_response(message)
+    
+    def _get_llm_response(self, message: str) -> Dict:
+        """Get response from Groq LLM"""
         
-        # Add emoji and polish
-        response_with_emoji = self._add_polish(response, matched_category)
+        # Build conversation context (last 5 messages for context)
+        messages = [{"role": "system", "content": self.system_prompt}]
+        
+        # Add recent history for context
+        recent_history = self.conversation_history[-10:]  # Last 10 messages
+        for entry in recent_history[:-1]:  # Exclude current message
+            role = entry.get("role", "user")
+            if role in ["user", "assistant"]:
+                messages.append({
+                    "role": role,
+                    "content": entry.get("content", "")
+                })
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
+        # Call Groq API
+        completion = self.groq_client.chat.completions.create(
+            model="llama-3.1-70b-versatile",  # FREE on Groq!
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7,
+            top_p=0.9
+        )
+        
+        response_text = completion.choices[0].message.content
+        
+        # Record assistant response
+        self.conversation_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "role": "assistant",
+            "content": response_text,
+            "model": "llama-3.1-70b"
+        })
+        
+        # Detect if any actions should be suggested
+        actions = self._detect_actions(message, response_text)
         
         return {
-            "response": response_with_emoji,
-            "category": matched_category,
+            "response": response_text,
+            "category": "llm",
             "actions": actions,
             "timestamp": datetime.now().isoformat(),
-            "message_length": len(message)
+            "model": "llama-3.1-70b-versatile",
+            "llm_powered": True
         }
     
-    def _add_polish(self, response: str, category: Optional[str]) -> str:
-        """Add helpful emoji and formatting"""
-        if category == "error":
-            return f"🆘 {response}"
-        elif category == "bonus":
-            return f"💰 {response}"
-        elif category == "design":
-            return f"🎨 {response}"
-        elif category == "feature":
-            return f"✨ {response}"
-        elif category == "consolidation":
-            return f"🔧 {response}"
-        elif category == "results":
-            return f"✅ {response}"
-        return f"👋 {response}"
+    def _get_fallback_response(self, message: str) -> Dict:
+        """Fallback response when LLM is unavailable"""
+        message_lower = message.lower()
+        
+        # Simple keyword matching
+        if any(word in message_lower for word in ["consolidate", "merge", "combine"]):
+            response = self.fallback_responses["consolidate"]
+            category = "consolidation"
+        elif any(word in message_lower for word in ["upload", "file", "add"]):
+            response = self.fallback_responses["upload"]
+            category = "upload"
+        elif any(word in message_lower for word in ["bonus", "score", "grade", "percent"]):
+            response = self.fallback_responses["bonus"]
+            category = "bonus"
+        elif any(word in message_lower for word in ["download", "result", "get"]):
+            response = self.fallback_responses["download"]
+            category = "results"
+        elif any(word in message_lower for word in ["error", "problem", "issue", "fail", "broken", "not working"]):
+            response = self.fallback_responses["error"]
+            category = "error"
+        else:
+            response = self.fallback_responses["default"]
+            category = "general"
+        
+        self.conversation_history.append({
+            "timestamp": datetime.now().isoformat(),
+            "role": "assistant",
+            "content": response
+        })
+        
+        return {
+            "response": response,
+            "category": category,
+            "actions": [],
+            "timestamp": datetime.now().isoformat(),
+            "llm_powered": False
+        }
+    
+    def _detect_actions(self, message: str, response: str) -> List[str]:
+        """Detect if any actions should be executed based on context"""
+        actions = []
+        combined = (message + " " + response).lower()
+        
+        if "upload" in combined and "how" in message.lower():
+            actions.append("guide_to_upload")
+        if "download" in combined and ("ready" in combined or "result" in combined):
+            actions.append("show_results")
+        if "error" in message.lower() or "problem" in message.lower():
+            actions.append("troubleshoot")
+        
+        return actions
     
     def execute_action(self, action: str, session_id: Optional[str] = None) -> Dict:
         """Execute recommended actions"""
         actions_map = {
-            "guide_to_upload": self._guide_upload,
-            "show_supported_formats": self._show_formats,
-            "show_results": self._show_results,
-            "initiate_download": self._initiate_download,
-            "explain_bonus_system": self._explain_bonus,
-            "troubleshoot": self._troubleshoot,
-            "retry_consolidation": self._retry_consolidation
+            "guide_to_upload": {
+                "action": "guide_upload",
+                "message": "📤 Opening upload guide..."
+            },
+            "show_results": {
+                "action": "show_results", 
+                "message": "📊 Showing your results..."
+            },
+            "troubleshoot": {
+                "action": "troubleshoot",
+                "message": "🔧 Running diagnostics..."
+            }
         }
         
-        if action in actions_map:
-            return actions_map[action](session_id)
-        
-        return {"status": "action_unknown", "action": action}
-    
-    def _guide_upload(self, session_id: Optional[str]) -> Dict:
-        return {
-            "action": "guide_upload",
-            "message": "📤 Upload Guide:\n1. Click the upload area\n2. Select your test files\n3. Wait for confirmation\n4. Click 'Consolidate Files'\n5. Download your result!"
-        }
-    
-    def _show_formats(self, session_id: Optional[str]) -> Dict:
-        return {
-            "action": "show_formats",
-            "message": "✅ Supported Formats:\n• Excel (.xlsx)\n• CSV (.csv)\n• Multiple files at once\n• Any file size"
-        }
-    
-    def _show_results(self, session_id: Optional[str]) -> Dict:
-        return {
-            "action": "show_results",
-            "message": "📊 Results Include:\n• Consolidated student data\n• Test scores\n• Participation bonuses\n• Performance percentiles\n• Pass/Fail status"
-        }
-    
-    def _initiate_download(self, session_id: Optional[str]) -> Dict:
-        return {
-            "action": "download",
-            "message": "⬇️ Preparing download...",
-            "session_id": session_id
-        }
-    
-    def _explain_bonus(self, session_id: Optional[str]) -> Dict:
-        return {
-            "action": "explain_bonus",
-            "message": "🎯 Bonus System:\n📊 Grade 6 Bonus:\n• 1-2 tests: 5% bonus\n• 3-5 tests: 10% bonus\n• 6+ tests: 15% bonus\n\n📈 Score increases based on percentile ranking\n🌟 Rewards consistency and improvement"
-        }
-    
-    def _troubleshoot(self, session_id: Optional[str]) -> Dict:
-        return {
-            "action": "troubleshoot",
-            "message": "🔧 Troubleshooting:\n✓ Checking file formats\n✓ Verifying data integrity\n✓ Reprocessing files\n✓ Rebuilding consolidation\n\nIf issues persist, try uploading files again."
-        }
-    
-    def _retry_consolidation(self, session_id: Optional[str]) -> Dict:
-        return {
-            "action": "retry_consolidation",
-            "message": "🔄 Retrying consolidation...\n⏳ Processing files\n✅ Rebuilding results\n📥 Ready for download"
-        }
+        return actions_map.get(action, {"action": action, "message": "Processing..."})
     
     def get_conversation_summary(self) -> Dict:
         """Get summary of conversation"""
         return {
             "total_messages": len(self.conversation_history),
-            "conversations": self.conversation_history,
+            "llm_enabled": self.llm_enabled,
+            "model": "llama-3.1-70b-versatile" if self.llm_enabled else "fallback",
             "last_interaction": self.conversation_history[-1] if self.conversation_history else None
         }
+    
+    def clear_history(self):
+        """Clear conversation history"""
+        self.conversation_history = []
 
 
 # Singleton instance
