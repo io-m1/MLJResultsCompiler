@@ -756,33 +756,6 @@ def build_application(token: str) -> Application:
     application = Application.builder().token(token).build()
     handler = TelegramBotHandler(token)
 
-    # Add keepalive job to prevent Render inactivity timeout
-    # This will be scheduled when application starts
-    async def keepalive_job(context):
-        """Periodic job to keep bot alive during inactivity"""
-        try:
-            # Get bot info - lightweight API call that keeps connection alive
-            bot = context.bot
-            bot_info = await bot.get_me()
-            logger.debug(f"Keepalive ping successful - Bot: {bot_info.username}")
-        except Exception as e:
-            logger.warning(f"Keepalive ping failed: {e}")
-
-    # Schedule keepalive job after application starts
-    async def schedule_jobs(app, user):
-        """Schedule jobs after application startup"""
-        if app.job_queue:
-            app.job_queue.run_repeating(
-                keepalive_job,
-                interval=300,  # Every 5 minutes
-                first=60,      # First run after 1 minute
-                name="keepalive"
-            )
-            logger.info("Keepalive job scheduled")
-    
-    # Register the callback for post_init
-    application.post_init = schedule_jobs
-
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", handler.start),
