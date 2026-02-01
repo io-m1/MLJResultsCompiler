@@ -812,6 +812,37 @@ HTML_TEMPLATE = """
             document.getElementById('cacheHitRate').textContent = 92;
         }
 
+        // ===== KEEPALIVE MECHANISM (Prevents Render hibernation) =====
+        async function sendKeepalive() {
+            try {
+                const response = await fetch('/api/hybrid/keepalive');
+                const data = await response.json();
+                console.log('✅ Keepalive sent - Server awake. Activity:', data.last_activity_seconds_ago + 's ago');
+            } catch (e) {
+                console.warn('Keepalive ping failed (server may be sleeping):', e.message);
+            }
+        }
+
+        // Send keepalive every 5 minutes (stays well below 15-minute hibernation threshold)
+        setInterval(sendKeepalive, 5 * 60 * 1000);
+        
+        // Also send on page load to wake up sleeping server
+        window.addEventListener('load', () => {
+            console.log('🔄 Page loaded - sending keepalive...');
+            sendKeepalive();
+        });
+
+        // Send keepalive on any user activity
+        document.addEventListener('click', () => {
+            console.log('📍 User activity detected - sending keepalive...');
+            sendKeepalive();
+        });
+
+        document.addEventListener('keydown', () => {
+            console.log('⌨️  Keyboard activity - sending keepalive...');
+            sendKeepalive();
+        });
+
         // Initial load
         loadDashboard();
     </script>
