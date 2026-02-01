@@ -158,8 +158,17 @@ async def consolidate_results(
         file_paths = [f["path"] for f in session["files"]]
         processor = ExcelProcessor("temp_uploads", "temp_uploads")
         
-        # Consolidate
-        consolidated_data = processor.consolidate_multiple_files(file_paths)
+        # Load each file as a test (numbered 1, 2, 3, etc.)
+        for idx, file_path in enumerate(file_paths, start=1):
+            success = processor.load_test_file(Path(file_path), test_number=idx)
+            if not success:
+                raise Exception(f"Failed to load file: {file_path}")
+        
+        # Consolidate all loaded tests
+        consolidated_data = processor.consolidate_results()
+        
+        if not consolidated_data:
+            raise Exception("No data could be consolidated from the uploaded files")
         
         # Add bonus if requested
         if include_grade_6:
