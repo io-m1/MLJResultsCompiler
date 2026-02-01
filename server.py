@@ -6,8 +6,7 @@ This is necessary for Render's free tier which only allows one process
 
 import os
 import sys
-import asyncio
-import aiohttp
+import threading
 import logging
 from pathlib import Path
 from fastapi import FastAPI
@@ -27,75 +26,61 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global tasks
-bot_task = None
-keepalive_task = None
+# Global bot thread
+bot_thread = None
 
 
-async def start_bot():
-    """Start the Telegram bot polling"""
-    try:
-        logger.info("Initializing Telegram bot...")
-        # Import here to avoid issues if token is not set during import
-        from telegram_bot import build_application
-        from dotenv import load_dotenv
-        
-        load_dotenv(dotenv_path='.env')
-        token = os.getenv('TELEGRAM_BOT_TOKEN')
-        
-        if not token:
-            logger.error("TELEGRAM_BOT_TOKEN not set! Bot will not start.")
-            return
-        
-        application = build_application(token)
-        logger.info("Starting Telegram bot polling...")
-        await application.run_polling(
-            allowed_updates=None,
-            drop_pending_updates=False,
-            read_timeout=20,
-            write_timeout=20,
-            connect_timeout=20,
-            pool_timeout=20
-        )
-    except Exception as e:
-        logger.error(f"Fatal error in bot: {e}", exc_info=True)
-        # Restart bot after 10 seconds
-        await asyncio.sleep(10)
-        await start_bot()
-
-
-async def keepalive_worker():
-    """Background task that pings Telegram to keep connection alive"""
-    while True:
+def start_bot_thread():
+    """Start the Telegram bot in a separate thread"""
+    def bot_worker():
         try:
-            await asyncio.sleep(300)  # Every 5 minutes
-            logger.debug("Keepalive tick")
-        except asyncio.CancelledError:
-            logger.info("Keepalive worker cancelled")
-            break
+            logger.info("Initializing Telegram bot in background thread...")
+            from telegram_bot import build_application
+            from dotenv import load_dotenv
+            
+            load_dotenv(dotenv_path='.env')
+            token = os.getenv('TELEGRAM_BOT_TOKEN')
+            
+            if not token:
+                logger.error("TELEGRAM_BOT_TOKEN not set! Bot will not start.")
+                return
+            
+            application = build_application(token)
+            logger.info("Starting Telegram bot polling...")
+            # run_polling() blocks in this thread, which is what we want
+            application.run_polling(
+                allowed_updates=None,
+                drop_pending_updates=False,
+                read_timeout=20,
+                write_timeout=20,
+                connect_timeout=20,
+                pool_timeout=20
+            )
         except Exception as e:
-            logger.warning(f"Keepalive error: {e}")
+            logger.error(f"Fatal error in bot: {e}", exc_info=True)
+    
+    # Run bot in daemon thread (won't block server shutdown)
+    thread = threading.Thread(target=bot_worker, daemon=True)
+    thread.start()
+    return thread
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage FastAPI lifespan events"""
-    global bot_task, keepalive_task
+    global bot_thread
     
     # Startup
     try:
         logger.info("Server starting up...")
         
-        # Start bot polling in background task
-        bot_task = asyncio.create_task(start_bot())
-        logger.info("Bot task created")
+        # Start bot in background thread (not async)
+        bot_thread = start_bot_thread()
+        logger.info("Bot thread started")
         
-        # Start keepalive worker
-        keepalive_task = asyncio.create_task(keepalive_worker())
-        logger.info("Keepalive worker started")
-        
-        # Give bot a moment to start
-        await asyncio.sleep(2)
+        # Give bot a moment to initialize
+        import time
+        time.sleep(2)
         
         yield
         
@@ -106,21 +91,7 @@ async def lifespan(app: FastAPI):
     finally:
         # Shutdown
         logger.info("Server shutting down...")
-        
-        if bot_task:
-            bot_task.cancel()
-            try:
-                await bot_task
-            except asyncio.CancelledError:
-                pass
-        
-        if keepalive_task:
-            keepalive_task.cancel()
-            try:
-                await keepalive_task
-            except asyncio.CancelledError:
-                pass
-        
+        # Bot thread is daemon, so it will be terminated automatically
         logger.info("Server shutdown complete")
 
 
@@ -138,14 +109,14 @@ async def root():
         "status": "ok",
         "service": "MLJ Results Compiler Bot",
         "version": "1.0",
-        "bot_running": bot_task is not None and not bot_task.done() if bot_task else False
+        "bot_running": bot_thread is not None and bot_thread.is_alive()
     }
 
 
 @app.get("/health")
 async def health():
     """Health check for monitoring"""
-    bot_status = "running" if (bot_task and not bot_task.done()) else "stopped"
+    bot_status = "running" if (bot_thread and bot_thread.is_alive()) else "stopped"
     return {
         "status": "healthy",
         "bot": bot_status
