@@ -170,6 +170,10 @@ app = FastAPI(
 from src.web_ui import router as ui_router
 app.include_router(ui_router)
 
+# Include hybrid bot+web bridge API
+from src.hybrid_bridge import router as hybrid_router
+app.include_router(hybrid_router)
+
 
 @app.get("/api/status")
 async def status():

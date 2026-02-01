@@ -64,7 +64,10 @@ class TelegramBotHandler:
         try:
             user_id = update.effective_user.id
             
-            welcome_text = """
+            # Create web session link
+            web_app_url = "https://mljresultscompiler.onrender.com/app"
+            
+            welcome_text = f"""
 👋 Welcome to MLJ Results Compiler Bot!
 
 I can help you consolidate test results from multiple Excel files.
@@ -75,10 +78,16 @@ I can help you consolidate test results from multiple Excel files.
 3. Choose your output format
 4. Get your results instantly!
 
+🌐 **Quick Option:** Use the web app for drag-and-drop uploads
+👉 [Open Web App]({web_app_url})
+
 📤 **Send your files now** or use /help for more info
             """
             
-            await update.message.reply_text(welcome_text)
+            await update.message.reply_text(
+                welcome_text,
+                parse_mode="Markdown"
+            )
             logger.info(f"User {user_id} started the bot")
         except TelegramError as e:
             logger.error(f"Telegram error in /start: {e}", exc_info=True)
