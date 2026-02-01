@@ -46,7 +46,7 @@ def start_bot_thread():
         if bot_initialized:
             logger.info("Previous bot instance detected, waiting for cleanup...")
             import time
-            time.sleep(2)  # Wait for old instance to fully disconnect
+            time.sleep(3)  # Wait longer for old instance to fully disconnect
         
         bot_initialized = True
     
@@ -54,6 +54,7 @@ def start_bot_thread():
         try:
             import asyncio
             import time
+            from telegram.error import Conflict, NetworkError
             
             logger.info("Initializing Telegram bot in background thread...")
             from telegram_bot import build_application
@@ -70,6 +71,9 @@ def start_bot_thread():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
+            retry_count = 0
+            max_retries = 5
+            
             try:
                 application = build_application(token)
                 logger.info("Building bot application...")
@@ -80,28 +84,55 @@ def start_bot_thread():
                 logger.info("Bot started")
                 
                 # Add small delay to ensure previous instance fully disconnected
-                time.sleep(1)
+                time.sleep(2)
                 
-                # Start the updater (handles incoming updates)
-                logger.info("Starting polling...")
-                loop.run_until_complete(application.updater.start_polling(
-                    allowed_updates=None,
-                    drop_pending_updates=True,  # Drop pending to avoid old updates
-                    read_timeout=20,
-                    write_timeout=20,
-                    connect_timeout=20,
-                    pool_timeout=20
-                ))
-                
-                logger.info("Bot polling active and listening for updates")
-                # Keep the loop running indefinitely
-                loop.run_forever()
+                # Start the updater (handles incoming updates) with retry logic
+                while retry_count < max_retries:
+                    try:
+                        logger.info(f"Starting polling (attempt {retry_count + 1}/{max_retries})...")
+                        loop.run_until_complete(application.updater.start_polling(
+                            allowed_updates=None,
+                            drop_pending_updates=True,  # Drop pending to avoid old updates
+                            read_timeout=20,
+                            write_timeout=20,
+                            connect_timeout=20,
+                            pool_timeout=20
+                        ))
+                        
+                        logger.info("Bot polling active and listening for updates")
+                        retry_count = 0  # Reset retry count on success
+                        
+                        # Keep the loop running indefinitely
+                        loop.run_forever()
+                    
+                    except Conflict as conflict_err:
+                        retry_count += 1
+                        wait_time = min(2 ** retry_count, 32)  # Exponential backoff, max 32s
+                        logger.warning(f"Conflict error (attempt {retry_count}/{max_retries}): {conflict_err}")
+                        logger.info(f"Another bot instance detected. Waiting {wait_time}s before retry...")
+                        
+                        if retry_count >= max_retries:
+                            logger.error(f"Max retries exceeded. Giving up.")
+                            break
+                        
+                        time.sleep(wait_time)
+                    
+                    except (NetworkError, asyncio.CancelledError) as err:
+                        logger.error(f"Network/cancellation error: {err}")
+                        retry_count += 1
+                        
+                        if retry_count >= max_retries:
+                            logger.error(f"Max retries exceeded after network errors.")
+                            break
+                        
+                        wait_time = min(2 ** retry_count, 32)
+                        logger.info(f"Waiting {wait_time}s before retry...")
+                        time.sleep(wait_time)
+            
             except asyncio.CancelledError:
                 logger.info("Bot polling cancelled")
             except Exception as poll_err:
-                logger.error(f"Polling error: {poll_err}", exc_info=True)
-                # Wait before retrying to avoid rapid conflict errors
-                time.sleep(5)
+                logger.error(f"Unexpected polling error: {poll_err}", exc_info=True)
             finally:
                 # Graceful shutdown sequence
                 try:
