@@ -29,13 +29,31 @@ logger = logging.getLogger(__name__)
 # Global bot thread
 bot_thread = None
 bot_stop_event = None
+bot_lock = threading.Lock()
+bot_initialized = False
 
 
 def start_bot_thread():
-    """Start the Telegram bot in a separate thread"""
+    """Start the Telegram bot in a separate thread (thread-safe)"""
+    global bot_thread, bot_initialized
+    
+    # Prevent multiple bot instances from starting
+    with bot_lock:
+        if bot_initialized and bot_thread and bot_thread.is_alive():
+            logger.warning("Bot already running, skipping duplicate initialization")
+            return bot_thread
+        
+        if bot_initialized:
+            logger.info("Previous bot instance detected, waiting for cleanup...")
+            import time
+            time.sleep(2)  # Wait for old instance to fully disconnect
+        
+        bot_initialized = True
+    
     def bot_worker():
         try:
             import asyncio
+            import time
             
             logger.info("Initializing Telegram bot in background thread...")
             from telegram_bot import build_application
@@ -54,44 +72,61 @@ def start_bot_thread():
             
             try:
                 application = build_application(token)
-                logger.info("Starting Telegram bot polling...")
-                # Use start/updater.start_polling instead of run_polling() to avoid
-                # signal handler registration (can only be done from main thread)
+                logger.info("Building bot application...")
                 loop.run_until_complete(application.initialize())
+                logger.info("Bot initialized")
+                
                 loop.run_until_complete(application.start())
-                logger.info("Bot application started")
+                logger.info("Bot started")
+                
+                # Add small delay to ensure previous instance fully disconnected
+                time.sleep(1)
                 
                 # Start the updater (handles incoming updates)
+                logger.info("Starting polling...")
                 loop.run_until_complete(application.updater.start_polling(
                     allowed_updates=None,
-                    drop_pending_updates=False,
+                    drop_pending_updates=True,  # Drop pending to avoid old updates
                     read_timeout=20,
                     write_timeout=20,
                     connect_timeout=20,
                     pool_timeout=20
                 ))
                 
-                logger.info("Bot polling active")
+                logger.info("Bot polling active and listening for updates")
                 # Keep the loop running indefinitely
                 loop.run_forever()
             except asyncio.CancelledError:
                 logger.info("Bot polling cancelled")
+            except Exception as poll_err:
+                logger.error(f"Polling error: {poll_err}", exc_info=True)
+                # Wait before retrying to avoid rapid conflict errors
+                time.sleep(5)
             finally:
                 # Graceful shutdown sequence
                 try:
+                    logger.info("Stopping updater...")
                     loop.run_until_complete(application.updater.stop())
+                    logger.info("Stopping application...")
                     loop.run_until_complete(application.stop())
+                    logger.info("Shutting down application...")
                     loop.run_until_complete(application.shutdown())
+                    logger.info("Bot shutdown complete")
                 except Exception as shutdown_err:
                     logger.warning(f"Shutdown error: {shutdown_err}")
                 loop.close()
         except Exception as e:
             logger.error(f"Fatal error in bot: {e}", exc_info=True)
+        finally:
+            global bot_initialized
+            with bot_lock:
+                bot_initialized = False
     
     # Run bot in non-daemon thread (will continue even if FastAPI shuts down)
     # This keeps the bot responsive during Render spin-downs
     thread = threading.Thread(target=bot_worker, daemon=False)
     thread.start()
+    logger.info("Bot thread started")
     return thread
 
 
