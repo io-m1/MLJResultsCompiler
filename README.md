@@ -171,3 +171,25 @@ All existing functionality is preserved:
 - Traditional command-based interface still available
 
 The new conversational features are **additions** that enhance the bot without breaking existing functionality.
+
+## 🔍 Comparison with Other Automation Tools
+
+**Wondering if there are better alternatives?** Check out our comprehensive comparison:
+
+👉 **[Automation Tools Comparison Guide](AUTOMATION_COMPARISON.md)**
+
+This guide compares MLJ Results Compiler with:
+- Zapier, Make (Integromat), Power Automate
+- n8n, UiPath, Airtable
+- Document processing SaaS tools
+- Custom development approaches
+
+**Key Differentiators:**
+- ✅ Only tool with conversational AI for document consolidation
+- ✅ Telegram-native bot experience
+- ✅ Free tier with unlimited usage
+- ✅ 5-minute deployment vs weeks for alternatives
+- ✅ Specialized for test/document consolidation
+
+**Use MLJ when:** Document consolidation, Telegram users, budget-conscious, quick deployment  
+**Consider alternatives when:** Multi-app integration, visual workflows, enterprise RPA
