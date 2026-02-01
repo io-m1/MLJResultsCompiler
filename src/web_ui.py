@@ -19,7 +19,9 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HPUP - Hypersonic Universal Platform</title>
+    <title>MLJ Results Compiler</title>
+    <!-- Telegram Mini App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
             margin: 0;
@@ -845,6 +847,52 @@ HTML_TEMPLATE = """
 
         // Initial load
         loadDashboard();
+
+        // ===== TELEGRAM MINI APP INTEGRATION =====
+        if (window.Telegram && window.Telegram.WebApp) {
+            // Running inside Telegram Mini App
+            const tg = window.Telegram.WebApp;
+            
+            console.log('✅ Telegram Mini App detected!');
+            
+            // Expand to full height
+            tg.expand();
+            
+            // Set theme colors
+            tg.setHeaderColor('#007AFF');
+            tg.setBackgroundColor('#F2F2F7');
+            
+            // Add close button
+            tg.enableClosingConfirmation();
+            
+            // Show user info (if available)
+            if (tg.initData) {
+                console.log('📱 User:', tg.initDataUnsafe.user);
+            }
+            
+            // Add "Back to Bot" button if needed
+            const backButton = tg.BackButton;
+            backButton.show();
+            backButton.onClick(() => {
+                console.log('🔙 Returning to bot...');
+                tg.close();
+            });
+            
+            // Add send data to bot on completion
+            window.sendToBot = function(message) {
+                if (tg && tg.sendData) {
+                    tg.sendData(message);
+                    console.log('📤 Sent to bot:', message);
+                }
+            };
+            
+            // Show ready signal
+            tg.ready();
+            console.log('🚀 Mini App ready!');
+        } else {
+            console.log('🌐 Running in standard web browser (not Telegram Mini App)');
+            // Add browser-only features if needed
+        }
     </script>
 </body>
 </html>

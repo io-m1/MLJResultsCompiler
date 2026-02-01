@@ -64,10 +64,10 @@ class TelegramBotHandler:
         try:
             user_id = update.effective_user.id
             
-            # Create web session link
+            # Mini App URL (opens inside Telegram)
             web_app_url = "https://mljresultscompiler.onrender.com/app"
             
-            welcome_text = f"""
+            welcome_text = """
 👋 Welcome to MLJ Results Compiler Bot!
 
 I can help you consolidate test results from multiple Excel files.
@@ -78,17 +78,27 @@ I can help you consolidate test results from multiple Excel files.
 3. Choose your output format
 4. Get your results instantly!
 
-🌐 **Quick Option:** Use the web app for drag-and-drop uploads
-👉 [Open Web App]({web_app_url})
-
-📤 **Send your files now** or use /help for more info
-            """
+🌐 **Or use the Mini App** - Opens right inside Telegram!
+"""
+            
+            # Create Mini App button (opens web in Telegram)
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(
+                    text="🌐 Open Mini App",
+                    web_app={"url": web_app_url}
+                )],
+                [InlineKeyboardButton(
+                    text="📚 Help",
+                    callback_data="help"
+                )]
+            ])
             
             await update.message.reply_text(
                 welcome_text,
-                parse_mode="Markdown"
+                parse_mode="Markdown",
+                reply_markup=keyboard
             )
-            logger.info(f"User {user_id} started the bot")
+            logger.info(f"User {user_id} started the bot - Mini App offered")
         except TelegramError as e:
             logger.error(f"Telegram error in /start: {e}", exc_info=True)
             try:
