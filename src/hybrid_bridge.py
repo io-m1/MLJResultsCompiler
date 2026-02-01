@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, FileResponse
 import os
 import json
 import uuid
+import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 import asyncio
@@ -28,11 +29,20 @@ LAST_ACTIVITY = datetime.now()  # Track last API activity
 session_manager = SessionManager()
 
 def cleanup_old_sessions():
-    """Remove expired sessions"""
+    """Remove expired sessions (both memory and filesystem)"""
     now = datetime.now()
     expired = [sid for sid, data in UPLOAD_SESSIONS.items() 
                if now - data['created'] > timedelta(seconds=SESSION_TIMEOUT)]
     for sid in expired:
+        # CRITICAL FIX: Also clean up filesystem
+        temp_dir = Path(f"temp_uploads/{sid}")
+        if temp_dir.exists():
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to cleanup {temp_dir}: {e}")
+        
         del UPLOAD_SESSIONS[sid]
 
 def record_activity():
@@ -192,11 +202,17 @@ async def consolidate_results(
         output_dir = Path(f"temp_uploads/{session_id}")
         output_dir.mkdir(parents=True, exist_ok=True)
         result_filename = f"consolidated_{result_id}.xlsx"
-        result_path = str(output_dir / result_filename)
+        
+        # Use absolute path to ensure file is found
+        result_path = str(output_dir.resolve() / result_filename)
         
         # Save using the correct method - set output_dir as Path object
         processor.output_dir = output_dir
         processor.save_consolidated_file(consolidated_data, result_filename)
+        
+        # Verify file was saved
+        if not os.path.exists(result_path):
+            raise Exception(f"Failed to save result file: {result_path}")
         
         session["status"] = "completed"
         session["consolidation_result"] = {
@@ -275,6 +291,35 @@ async def api_status():
         "timestamp": datetime.now().isoformat()
     }
 
+async def execute_data_transformations(session_id: str, actions: list) -> dict:
+    """
+    CRITICAL FIX: Execute data transformations for chat-initiated requests.
+    This bridges the gap between chat interface and data execution pipeline.
+    """
+    if session_id not in UPLOAD_SESSIONS:
+        return {"success": False, "error": "Session not found"}
+    
+    session = UPLOAD_SESSIONS[session_id]
+    
+    if not session.get("consolidation_result"):
+        return {"success": False, "error": "No consolidated data available"}
+    
+    try:
+        assistant = get_assistant()
+        assistant.session_context = {
+            "files_count": len(session.get("files", [])),
+            "status": session.get("status"),
+            "has_results": True,
+            "result_path": session["consolidation_result"].get("path")
+        }
+        
+        result = assistant.execute_data_actions(session_id, actions)
+        return result
+    except Exception as e:
+        import logging
+        logging.error(f"Data transformation error: {e}")
+        return {"success": False, "error": str(e)}
+
 @router.post("/ai-assist")
 async def ai_assist(request: Request):
     """Augmented Intelligence endpoint - context-aware assistance"""
@@ -302,7 +347,53 @@ async def ai_assist(request: Request):
         # Get assistant with context
         assistant = get_assistant()
         
-        # Analyze with context awareness (subtle agency)
+        # CRITICAL FIX: Check if user is asking for data actions
+        data_request = assistant.parse_data_request(message)
+        
+        if data_request.get("execute") and data_request.get("actions"):
+            # User is asking for data manipulation - execute directly
+            # Get consolidated data first
+            if session_id and session_id in UPLOAD_SESSIONS:
+                session = UPLOAD_SESSIONS[session_id]
+                if session.get("consolidation_result"):
+                    # Execute data actions and return result
+                    try:
+                        result = await execute_data_transformations(
+                            session_id=session_id,
+                            actions=data_request.get("actions")
+                        )
+                        return {
+                            "response": f"✓ Completed: {message}. Your results are ready to download.",
+                            "intent": "data_action",
+                            "action_result": result,
+                            "success": result.get("success", False),
+                            "timestamp": datetime.now().isoformat(),
+                            "augmented": True,
+                            "data_modified": True
+                        }
+                    except Exception as action_error:
+                        return {
+                            "error": str(action_error),
+                            "response": f"I understood your request, but encountered an error: {str(action_error)}",
+                            "intent": "data_action",
+                            "success": False
+                        }
+                else:
+                    return {
+                        "response": "I understand you want to modify data, but no consolidation results found. Please upload and consolidate files first.",
+                        "intent": "data_action",
+                        "action_result": None,
+                        "success": False
+                    }
+            else:
+                return {
+                    "response": "I understand you want to modify data, but no session found. Please create a session first.",
+                    "intent": "data_action",
+                    "action_result": None,
+                    "success": False
+                }
+        
+        # Otherwise, analyze with context awareness (conversational response)
         analysis = assistant.analyze_message(message, session_id, context)
         
         # Handle suggested action if any
@@ -315,7 +406,8 @@ async def ai_assist(request: Request):
             "intent": analysis.get("intent"),
             "action": action_result,
             "timestamp": analysis["timestamp"],
-            "augmented": analysis.get("augmented", False)
+            "augmented": analysis.get("augmented", False),
+            "data_modified": False
         }
     except Exception as e:
         import traceback
