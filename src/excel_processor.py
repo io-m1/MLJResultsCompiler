@@ -31,6 +31,8 @@ class ExcelProcessor:
         """
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
+        # CRITICAL FIX: Ensure output directory exists
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.test_data = {}  # {test_num: {email: {name, score}}}
         
     def find_column_index(self, sheet, column_names: List[str]) -> Optional[int]:

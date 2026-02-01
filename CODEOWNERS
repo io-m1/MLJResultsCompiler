@@ -1,0 +1,44 @@
+# Code Owners
+
+This file defines who is responsible for different parts of the codebase.
+
+## Domain Logic
+
+`src/domain/` @owner
+`src/models.py` @owner
+
+Reviews required for all changes.
+
+## Services
+
+`src/services/` @owner
+`src/adapters/` @owner
+
+## Tests
+
+`tests/` @owner
+
+All tests must pass before merge.
+
+## Documentation
+
+`*.md` @owner
+`docs/` @owner
+
+## Infrastructure
+
+`.github/workflows/` @owner
+`pyproject.toml` @owner
+`setup.py` @owner
+
+CI/CD changes require review.
+
+---
+
+**Default:** @owner
+
+**Note:** Maintainer review required for:
+- Architecture changes
+- Database schema changes
+- Dependency updates
+- Release tags

@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlj-results-compiler"
+version = "0.2.0"
+description = "AI-assisted Excel consolidation, grading, and reporting system with Telegram bot and web interface"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "MLJ Results Compiler Contributors"}
+]
+keywords = ["excel", "consolidation", "ai", "telegram", "web-api"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+    "Topic :: Utilities",
+]
+
+dependencies = [
+    "openpyxl==3.1.5",
+    "python-telegram-bot==20.3",
+    "python-dotenv==1.0.0",
+    "fastapi==0.110.0",
+    "uvicorn[standard]==0.23.2",
+    "python-multipart==0.0.6",
+    "Pillow==11.0.0",
+    "aiohttp==3.9.1",
+    "beautifulsoup4==4.12.2",
+    "feedparser==6.0.10",
+    "requests==2.31.0",
+    "groq==0.4.2",
+    "pandas==2.0.3",
+    "numpy==1.24.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.3",
+    "pytest-cov==4.1.0",
+    "pytest-asyncio==0.21.1",
+    "black==23.12.0",
+    "flake8==6.1.0",
+    "mypy==1.7.1",
+    "isort==5.13.2",
+]
+
+test = [
+    "pytest==7.4.3",
+    "pytest-cov==4.1.0",
+    "pytest-asyncio==0.21.1",
+]
+
+security = [
+    "bandit==1.7.5",
+    "safety==2.3.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/io-m1/MLJResultsCompiler"
+Documentation = "https://github.com/io-m1/MLJResultsCompiler/blob/main/README.md"
+Repository = "https://github.com/io-m1/MLJResultsCompiler.git"
+Issues = "https://github.com/io-m1/MLJResultsCompiler/issues"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip_gitignore = true
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --strict-markers"
+markers = [
+    "integration: integration tests",
+    "unit: unit tests",
+    "slow: slow tests",
+]

@@ -29,6 +29,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# CRITICAL FIX: Validate required environment variables at startup
+def validate_environment():
+    """Validate that all required environment variables are set"""
+    required_vars = {
+        'TELEGRAM_BOT_TOKEN': 'Telegram bot token for Telegram integration',
+        'WEBHOOK_BASE_URL': 'Base URL for webhooks (e.g., https://your-service.onrender.com)',
+    }
+    
+    missing = []
+    for var, description in required_vars.items():
+        if not os.getenv(var):
+            missing.append(f"{var} ({description})")
+    
+    if missing:
+        error_msg = f"Missing required environment variables:\n  - " + "\n  - ".join(missing)
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+    
+    logger.info("Environment validation passed - all required variables are set")
+
+# Validate environment before starting
+validate_environment()
+
 # Global bot thread
 bot_thread = None
 bot_stop_event = None

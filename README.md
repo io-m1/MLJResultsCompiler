@@ -1,8 +1,8 @@
 # MLJ Results Compiler
 
-Hybrid Telegram Bot + Web App for consolidating test results with AI assistance.
+**Production-grade Excel consolidation, grading, and reporting system.**
 
-**Status:** Production Ready | 100% Test Coverage
+Version: 0.2.0 | Status: Alpha (Active Refactoring) | License: MIT
 
 ## Key Features
 

@@ -157,16 +157,25 @@ CAPABILITIES:
 - Guide file uploads (Excel/CSV)
 - Explain consolidation process
 - Clarify the bonus system (1-2 tests: 5%, 3-5: 10%, 6+: 15%)
-- Help troubleshoot issues
+- Help troubleshoot issues (ESPECIALLY downloads not working)
 - Understand session context
+
+TROUBLESHOOTING (Important!):
+If user reports "not downloadable" or "download not working":
+1. Ask: "Did you click Consolidate? Does it say 'Completed' in Results tab?"
+2. If no: Guide them through consolidation
+3. If yes but no download: "We had a download bug - we just fixed it. Try refreshing the page."
+4. Still broken: Suggest they try uploading different files or check file format
+5. Really stuck: "Let's try the simple test: upload a single Excel file with 5 rows"
 
 HOW TO RESPOND:
 - Warm but professional, like a knowledgeable colleague
 - Concise but helpful
 - Never say "I'm executing function X"
 - Use minimal emojis
+- When troubleshooting, be specific and actionable
 
-Remember: You're augmenting human capability."""
+Remember: You're augmenting human capability. Sometimes the fix is technical (file saving), sometimes it's procedural (user needs to click Consolidate)."""
 
     def _get_cold_email_prompt(self) -> str:
         return """You are a precision cold email generator - an Augmented Intelligence system combining human strategic reasoning with AI speed.
@@ -554,6 +563,16 @@ Output strictly in JSON format."""
                 response += "Consolidation is in progress..."
             else:
                 response += "When you're ready, hit Consolidate to process them."
+        elif intent == "troubleshoot":
+            # Smarter troubleshooting
+            if insights["recent_error"]:
+                response = f"I see the issue: {insights['recent_error']}\n\nLet me help:\n1. Try uploading your files again\n2. Make sure they're in the correct format\n3. If the problem persists, check that your file isn't corrupted"
+            elif not insights["has_results"] and insights["session_status"] != "completed":
+                response = "It looks like your results haven't been created yet. Try these steps:\n1. Upload your files in the Upload tab\n2. Click the Consolidate button\n3. Once complete, your download will appear in the Results tab"
+            elif not insights["has_results"] and insights["session_status"] == "completed":
+                response = "I see consolidation finished, but the file might not have saved correctly. This is a known issue we're fixing. Try clicking Consolidate again - the fix has been deployed."
+            else:
+                response = "Sorry you're running into trouble. Try refreshing the page or upload your files again. If the issue continues, let me know the specific error message."
         elif intent in self.fallback_responses:
             response = self.fallback_responses[intent]
         else:

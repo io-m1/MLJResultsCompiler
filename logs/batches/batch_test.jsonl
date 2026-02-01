@@ -1,0 +1,2 @@
+{"timestamp": "2026-02-01T17:15:10.224360", "batch": {"batch_id": "test", "user_id": "user", "status": "queued", "items": [], "created_at": "2026-02-01T17:15:10.224360", "started_at": null, "completed_at": null, "output_dir": "output/batch_test"}}
+{"timestamp": "2026-02-01T17:15:26.745168", "batch": {"batch_id": "test", "user_id": "user", "status": "queued", "items": [], "created_at": "2026-02-01T17:15:26.745168", "started_at": null, "completed_at": null, "output_dir": "output/batch_test"}}
