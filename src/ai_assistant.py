@@ -7,6 +7,7 @@ Powered by Groq LLM (Llama 3.1 70B) - FREE tier
 Capabilities:
 - Test Results Consolidation Assistant
 - Cold Email Generator (precision outreach)
+- Self-Healing: Autonomous error recovery + GitHub issue escalation
 """
 
 import os
@@ -25,11 +26,25 @@ except ImportError:
     GROQ_AVAILABLE = False
     logger.warning("Groq not installed, using thoughtful fallback")
 
+# Import self-healing engine
+try:
+    from src.self_healing import get_healing_engine, self_heal
+    SELF_HEALING_AVAILABLE = True
+except ImportError:
+    SELF_HEALING_AVAILABLE = False
+    # Fallback decorator
+    def self_heal(component="ai_assistant"):
+        def decorator(func):
+            return func
+        return decorator
+    logger.warning("Self-healing module not available")
+
 
 class AugmentedAssistant:
     """
     Augmented Intelligence - Human reasoning meets AI speed.
     Subtly agentic: takes actions naturally without robotic announcements.
+    Self-healing: Monitors itself, recovers from errors, escalates when needed.
     
     Modes:
     - consolidation: Test results help (default)
@@ -42,6 +57,15 @@ class AugmentedAssistant:
         self.llm_enabled = False
         self.session_context: Dict = {}
         self.current_mode = "consolidation"  # Default mode
+        
+        # Initialize self-healing
+        self.healing_engine = None
+        if SELF_HEALING_AVAILABLE:
+            try:
+                self.healing_engine = get_healing_engine()
+                logger.info("✓ Self-healing engine attached")
+            except Exception as e:
+                logger.warning(f"Self-healing init failed: {e}")
         
         # Initialize Groq
         api_key = os.getenv("GROQ_API_KEY")
@@ -265,7 +289,7 @@ Output strictly in JSON format."""
     def analyze_message(self, message: str, session_id: Optional[str] = None, context: Optional[Dict] = None) -> Dict:
         """
         Analyze message and respond with augmented intelligence.
-        Context-aware, naturally capable.
+        Context-aware, naturally capable, self-healing.
         """
         
         # Update context if provided
@@ -283,13 +307,27 @@ Output strictly in JSON format."""
         # Gather insights (subtle agency)
         insights = self._gather_insights(message, session_id)
         
-        # Generate response
+        # Generate response with self-healing
         if self.llm_enabled:
             try:
                 response = self._get_augmented_response(message, insights)
                 return response
             except Exception as e:
-                logger.error(f"LLM error: {e}, using thoughtful fallback")
+                # Self-healing: log error and attempt recovery
+                if self.healing_engine:
+                    recovery = self.healing_engine.log_error(
+                        error=e,
+                        context={
+                            "message": message[:200],
+                            "session_id": session_id,
+                            "insights": insights
+                        },
+                        component="ai_assistant"
+                    )
+                    logger.warning(f"Self-healing: {recovery['recovery'].get('action', 'logged')}")
+                else:
+                    logger.error(f"LLM error: {e}")
+                
                 return self._get_thoughtful_fallback(message, insights)
         else:
             return self._get_thoughtful_fallback(message, insights)
@@ -483,6 +521,92 @@ Output strictly in JSON format."""
         """Clear conversation history"""
         self.conversation_history = []
         self.session_context = {}
+    
+    def get_health_report(self) -> Dict:
+        """
+        Get health report from self-healing engine.
+        Returns system status, error rates, and recommendations.
+        """
+        base_report = {
+            "assistant_status": "operational",
+            "llm_enabled": self.llm_enabled,
+            "mode": self.current_mode,
+            "conversation_count": len(self.conversation_history),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        if self.healing_engine:
+            healing_report = self.healing_engine.get_health_report()
+            return {**base_report, **healing_report}
+        else:
+            base_report["self_healing"] = "not_available"
+            return base_report
+    
+    def trigger_self_diagnosis(self) -> Dict:
+        """
+        Run self-diagnosis and return actionable insights.
+        This is the 'agentic rescue' capability.
+        """
+        diagnosis = {
+            "timestamp": datetime.now().isoformat(),
+            "checks": [],
+            "issues_found": [],
+            "auto_fixes_applied": [],
+            "recommendations": []
+        }
+        
+        # Check 1: LLM connectivity
+        diagnosis["checks"].append("llm_connectivity")
+        if not self.llm_enabled:
+            diagnosis["issues_found"].append({
+                "component": "llm",
+                "issue": "LLM not enabled",
+                "severity": "medium",
+                "suggestion": "Set GROQ_API_KEY environment variable"
+            })
+        
+        # Check 2: Memory usage (conversation history)
+        diagnosis["checks"].append("memory_usage")
+        if len(self.conversation_history) > 1000:
+            old_count = len(self.conversation_history)
+            self.conversation_history = self.conversation_history[-500:]
+            diagnosis["auto_fixes_applied"].append({
+                "action": "trimmed_conversation_history",
+                "before": old_count,
+                "after": len(self.conversation_history)
+            })
+        
+        # Check 3: Self-healing engine
+        diagnosis["checks"].append("self_healing_engine")
+        if self.healing_engine:
+            health = self.healing_engine.get_health_report()
+            if health["status"] == "critical":
+                diagnosis["issues_found"].append({
+                    "component": "self_healing",
+                    "issue": "System in critical state",
+                    "severity": "high",
+                    "errors_last_hour": health["errors_last_hour"]
+                })
+            diagnosis["recommendations"].extend(health.get("recommendations", []))
+        else:
+            diagnosis["issues_found"].append({
+                "component": "self_healing",
+                "issue": "Self-healing engine not available",
+                "severity": "low"
+            })
+        
+        # Overall assessment
+        if not diagnosis["issues_found"]:
+            diagnosis["status"] = "healthy"
+            diagnosis["message"] = "All systems operational"
+        elif any(i["severity"] == "high" for i in diagnosis["issues_found"]):
+            diagnosis["status"] = "needs_attention"
+            diagnosis["message"] = "Critical issues detected - review recommended"
+        else:
+            diagnosis["status"] = "minor_issues"
+            diagnosis["message"] = "Minor issues found, system operational"
+        
+        return diagnosis
 
 
 # Backwards compatibility alias

@@ -374,3 +374,77 @@ async def generate_cold_email(request: Request):
             "error": str(e),
             "trace": traceback.format_exc()
         }
+
+
+@router.get("/ai-health")
+async def ai_health():
+    """
+    Get AI assistant health report.
+    Returns system status, error rates, and recommendations.
+    """
+    record_activity()
+    assistant = get_assistant()
+    return assistant.get_health_report()
+
+
+@router.post("/ai-diagnose")
+async def ai_diagnose():
+    """
+    Trigger self-diagnosis and get actionable insights.
+    This is the 'agentic rescue' capability - the AI checks itself.
+    """
+    record_activity()
+    assistant = get_assistant()
+    return assistant.trigger_self_diagnosis()
+
+
+@router.get("/ai-logs")
+async def ai_logs(hours: int = Query(24, description="Hours of logs to retrieve")):
+    """
+    Get recent AI error and health logs.
+    Useful for debugging and monitoring.
+    """
+    record_activity()
+    
+    from pathlib import Path
+    from datetime import datetime, timedelta
+    import json
+    
+    logs = {
+        "errors": [],
+        "health": [],
+        "recoveries": [],
+        "period_hours": hours
+    }
+    
+    log_dir = Path("logs/ai_health")
+    cutoff = datetime.now() - timedelta(hours=hours)
+    
+    def read_recent_logs(path, key):
+        if path.exists():
+            try:
+                with open(path, 'r') as f:
+                    for line in f:
+                        try:
+                            entry = json.loads(line)
+                            ts = datetime.fromisoformat(entry.get("timestamp", "2000-01-01"))
+                            if ts > cutoff:
+                                logs[key].append(entry)
+                        except:
+                            continue
+            except Exception as e:
+                logs[key] = [{"error": str(e)}]
+    
+    read_recent_logs(log_dir / "error_log.jsonl", "errors")
+    read_recent_logs(log_dir / "health_log.jsonl", "health")
+    read_recent_logs(log_dir / "recovery_log.jsonl", "recoveries")
+    
+    # Summary
+    logs["summary"] = {
+        "total_errors": len(logs["errors"]),
+        "total_recoveries": len(logs["recoveries"]),
+        "health_checks": len(logs["health"]),
+        "recovery_rate": len([r for r in logs["recoveries"] if r.get("success")]) / max(len(logs["recoveries"]), 1)
+    }
+    
+    return logs
