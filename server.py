@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -197,8 +198,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Include web UI router
-from src.web_ui import router as ui_router
+# Add CORS middleware for web app access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include clean web UI router (replaces old web_ui)
+from src.web_ui_clean import router as ui_router
 app.include_router(ui_router)
 
 # Include hybrid bot+web bridge API
