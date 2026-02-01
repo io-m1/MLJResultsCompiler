@@ -24,6 +24,7 @@ from telegram.error import TelegramError
 
 from src.excel_processor import ExcelProcessor
 from src.session_manager import SessionManager, WorkflowAgent
+from src.participation_bonus import ParticipationBonusCalculator
 from src.ui_components import (
     KeyboardLayouts, MessageTemplates, Badge, Card, 
     StatsDisplay, Dialog, Breadcrumb
@@ -521,6 +522,24 @@ I can help you consolidate test results from multiple Excel files.
             # Consolidate
             consolidated_data = processor.consolidate_results()
             logger.info(f"User {user_id}: Consolidation returned {len(consolidated_data)} participants")
+            
+            # Apply participation bonuses (Grade 6)
+            if consolidated_data:
+                test_nums = []
+                first_data = next(iter(consolidated_data.values()))
+                for key in first_data:
+                    if key.startswith('test_') and key.endswith('_score'):
+                        test_num = int(key.split('_')[1])
+                        test_nums.append(test_num)
+                test_nums = sorted(test_nums)
+                
+                logger.info(f"User {user_id}: Applying participation bonuses (Grade 6)...")
+                bonus_calc = ParticipationBonusCalculator()
+                consolidated_data = bonus_calc.apply_bonuses_to_consolidated(
+                    consolidated_data, test_nums
+                )
+                logger.info(f"User {user_id}: Bonuses applied successfully")
+            
             if consolidated_data:
                 logger.info(f"Consolidated participants: {list(consolidated_data.keys())[:5]}...")  # First 5
                 first_email = list(consolidated_data.keys())[0]

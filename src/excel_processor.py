@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from src.validators import clean_name, clean_email, parse_score, validate_row_data
 from src.color_config import get_fill_for_test, TEST_COLORS
+from src.participation_bonus import ParticipationBonusCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -560,6 +561,7 @@ class ExcelProcessor:
     def save_consolidated_file(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.xlsx") -> bool:
         """
         Save consolidated results to Excel file with color coding (dynamic columns)
+        Includes Grade 6 participation bonus and final average
         
         Args:
             consolidated_data (Dict): Consolidated results
@@ -569,6 +571,23 @@ class ExcelProcessor:
             bool: True if successful
         """
         try:
+            # Apply participation bonuses if not already applied
+            if consolidated_data:
+                first_record = next(iter(consolidated_data.values()))
+                if 'Grade_6_bonus' not in first_record:
+                    logger.info("Applying participation bonuses...")
+                    test_nums = []
+                    for key in first_record:
+                        if key.startswith('test_') and key.endswith('_score'):
+                            test_num = int(key.split('_')[1])
+                            test_nums.append(test_num)
+                    test_nums = sorted(test_nums)
+                    
+                    calculator = ParticipationBonusCalculator()
+                    consolidated_data = calculator.apply_bonuses_to_consolidated(
+                        consolidated_data, test_nums
+                    )
+            
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Results"
@@ -583,28 +602,83 @@ class ExcelProcessor:
                         test_nums.append(test_num)
                 test_nums = sorted(test_nums)
             
-            # Create headers dynamically
-            headers = ['Full Name', 'Email'] + [f'Test {num} Score' for num in test_nums]
+            # Create headers dynamically: Name, Email, Tests..., Grade 6 Bonus, Final Average, Status
+            headers = (
+                ['Full Name', 'Email'] + 
+                [f'Test {num} Score' for num in test_nums] +
+                ['Grade 6 (Bonus)', 'Final Average (%)', 'Status']
+            )
             ws.append(headers)
             
             # Format header row
             for col_idx, header in enumerate(headers, 1):
                 cell = ws.cell(row=1, column=col_idx)
-                cell.font = Font(bold=True)
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = openpyxl.styles.PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             
             # Add data rows
             for email, data in consolidated_data.items():
-                row = [data['name'], email] + [data.get(f'test_{num}_score') for num in test_nums]
+                row = [
+                    data['name'], 
+                    email
+                ] + [
+                    data.get(f'test_{num}_score') for num in test_nums
+                ] + [
+                    data.get('Grade_6_bonus'),
+                    data.get('final_average'),
+                    data.get('status', 'N/A')
+                ]
                 ws.append(row)
             
             # Apply color coding to test score columns
             for row_idx in range(2, len(consolidated_data) + 2):
+                # Color test score columns
                 for col_offset, test_num in enumerate(test_nums):
                     col_idx = col_offset + 3  # Column C onwards (A=name, B=email)
                     cell = ws.cell(row=row_idx, column=col_idx)
                     cell.fill = get_fill_for_test(test_num)
-                    cell.alignment = Alignment(horizontal='center')
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                
+                # Color Grade 6 Bonus column (light green)
+                bonus_col = len(test_nums) + 3
+                bonus_cell = ws.cell(row=row_idx, column=bonus_col)
+                bonus_score = consolidated_data[list(consolidated_data.keys())[row_idx - 2]].get('Grade_6_bonus')
+                if bonus_score is not None:
+                    bonus_cell.fill = openpyxl.styles.PatternFill(
+                        start_color="C6EFCE", end_color="C6EFCE", fill_type="solid"
+                    )
+                bonus_cell.alignment = Alignment(horizontal='center', vertical='center')
+                
+                # Color Final Average column (yellow for >50%, red for <50%)
+                avg_col = bonus_col + 1
+                avg_cell = ws.cell(row=row_idx, column=avg_col)
+                final_avg = consolidated_data[list(consolidated_data.keys())[row_idx - 2]].get('final_average', 0)
+                if final_avg >= 50:
+                    avg_cell.fill = openpyxl.styles.PatternFill(
+                        start_color="FFF2CC", end_color="FFF2CC", fill_type="solid"
+                    )
+                else:
+                    avg_cell.fill = openpyxl.styles.PatternFill(
+                        start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"
+                    )
+                avg_cell.alignment = Alignment(horizontal='center', vertical='center')
+                
+                # Status column (green for PASS, red for FAIL)
+                status_col = avg_col + 1
+                status_cell = ws.cell(row=row_idx, column=status_col)
+                status = consolidated_data[list(consolidated_data.keys())[row_idx - 2]].get('status', 'N/A')
+                if status == 'PASS':
+                    status_cell.fill = openpyxl.styles.PatternFill(
+                        start_color="70AD47", end_color="70AD47", fill_type="solid"
+                    )
+                    status_cell.font = Font(bold=True, color="FFFFFF")
+                elif status == 'FAIL':
+                    status_cell.fill = openpyxl.styles.PatternFill(
+                        start_color="E74C3C", end_color="E74C3C", fill_type="solid"
+                    )
+                    status_cell.font = Font(bold=True, color="FFFFFF")
+                status_cell.alignment = Alignment(horizontal='center', vertical='center')
             
             # Adjust column widths
             ws.column_dimensions['A'].width = 25
@@ -613,9 +687,22 @@ class ExcelProcessor:
                 col_letter = get_column_letter(col_offset + 3)
                 ws.column_dimensions[col_letter].width = 15
             
+            # Set widths for new columns
+            grade6_col = get_column_letter(len(test_nums) + 3)
+            avg_col = get_column_letter(len(test_nums) + 4)
+            status_col = get_column_letter(len(test_nums) + 5)
+            
+            ws.column_dimensions[grade6_col].width = 18
+            ws.column_dimensions[avg_col].width = 18
+            ws.column_dimensions[status_col].width = 12
+            
             output_path = self.output_dir / output_filename
             wb.save(output_path)
-            logger.info(f"Saved consolidated results to {output_path} ({len(test_nums)} tests)")
+            logger.info(f"Saved consolidated results to {output_path}")
+            logger.info(f"  - {len(test_nums)} test scores")
+            logger.info(f"  - Grade 6 participation bonus")
+            logger.info(f"  - Final average per participant")
+            logger.info(f"  - Pass/Fail status (50% pass mark)")
             return True
             
         except Exception as e:
