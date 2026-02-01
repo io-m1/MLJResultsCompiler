@@ -173,7 +173,19 @@ async def consolidate_results(
         # Add bonus if requested
         if include_grade_6:
             bonus_calc = ParticipationBonusCalculator()
-            consolidated_data = bonus_calc.calculate_bonuses(consolidated_data)
+            # Determine test numbers from the data
+            test_numbers = []
+            if consolidated_data:
+                first_entry = next(iter(consolidated_data.values()))
+                for key in first_entry.keys():
+                    if key.startswith('test_') and key.endswith('_score'):
+                        try:
+                            test_num = int(key.split('_')[1])
+                            test_numbers.append(test_num)
+                        except (ValueError, IndexError):
+                            pass
+            test_numbers = sorted(test_numbers) if test_numbers else [1, 2, 3, 4, 5]
+            consolidated_data = bonus_calc.apply_bonuses_to_consolidated(consolidated_data, test_numbers)
         
         # Store result
         result_id = str(uuid.uuid4())
