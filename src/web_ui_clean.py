@@ -505,10 +505,8 @@ HTML_TEMPLATE = """
 
             try {
                 // Create session
-                const sessionResp = await fetch('/api/hybrid/session/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source: 'web' })
+                const sessionResp = await fetch('/api/hybrid/session/create?source=web', {
+                    method: 'POST'
                 });
                 const sessionData = await sessionResp.json();
                 sessionId = sessionData.session_id;
@@ -530,9 +528,8 @@ HTML_TEMPLATE = """
                 }
 
                 // Consolidate
-                const consolidateResp = await fetch(`/api/hybrid/consolidate/${sessionId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                const consolidateResp = await fetch(`/api/hybrid/consolidate/${sessionId}?include_grade_6=true`, {
+                    method: 'POST'
                 });
                 const result = await consolidateResp.json();
 
@@ -543,9 +540,19 @@ HTML_TEMPLATE = """
                         <div style="background: rgba(52, 199, 89, 0.1); padding: 20px; border-radius: 12px; margin: 20px 0;">
                             <h3 style="color: #34C759;">✅ Consolidation Complete!</h3>
                             <p><strong>${result.data_rows}</strong> records processed</p>
-                            <a href="${result.download_url}" class="btn btn-primary" style="margin-top: 15px;">
+                            <a href="${result.download_url}" class="btn btn-primary" style="margin-top: 15px; display: inline-block;">
                                 ⬇️ Download Result
                             </a>
+                        </div>
+                    `;
+                    switchTab('results');
+                } else {
+                    // Show error message
+                    const resultsDiv = document.getElementById('resultsContent');
+                    resultsDiv.innerHTML = `
+                        <div style="background: rgba(255, 59, 48, 0.1); padding: 20px; border-radius: 12px; margin: 20px 0;">
+                            <h3 style="color: #FF3B30;">❌ Error</h3>
+                            <p>${result.detail || result.error || 'Unknown error occurred'}</p>
                         </div>
                     `;
                     switchTab('results');
@@ -643,29 +650,4 @@ async def get_app():
     """App view"""
     return HTML_TEMPLATE
 
-@router.post("/api/hybrid/ai-assist")
-async def ai_assist(request):
-    """AI Assistant endpoint for chat"""
-    from fastapi import Request
-    body = await request.json()
-    message = body.get('message', '')
-    session_id = body.get('session_id')
-    
-    # Simple AI response logic
-    if 'consolidate' in message.lower() or 'upload' in message.lower():
-        response = "I can help! Upload your test files and I'll consolidate them automatically."
-        action = None
-    elif 'result' in message.lower() or 'download' in message.lower():
-        response = "Your results should be ready in the Results tab. Click to download."
-        action = None
-    elif 'bonus' in message.lower() or 'score' in message.lower():
-        response = "The system automatically calculates participation bonuses based on test frequency and performance."
-        action = None
-    else:
-        response = f"I understand: {message[:50]}... Let me help you with that."
-        action = None
-    
-    return {
-        "response": response,
-        "action": action
-    }
+# AI assist endpoint is defined in hybrid_bridge.py - no duplicate needed here

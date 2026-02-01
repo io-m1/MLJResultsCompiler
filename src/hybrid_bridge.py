@@ -287,8 +287,3 @@ async def ai_assist(request: Request):
             "response": "Sorry, I encountered an error. Please try again.",
             "trace": traceback.format_exc()
         }
-    except Exception as e:
-        return {
-            "error": str(e),
-            "response": "Sorry, I encountered an error. Please try again."
-        }
