@@ -57,15 +57,15 @@ def start_bot_thread():
         try:
             import asyncio
             import time
-            from telegram.error import Conflict, NetworkError
+            from telegram.error import Conflict, NetworkError, TelegramError
             
             logger.info("Initializing Telegram bot in background thread...")
             from telegram_bot import build_application
             from dotenv import load_dotenv
             
             # Give previous instance time to fully disconnect
-            logger.info("Waiting 3s for old bot instance to disconnect...")
-            time.sleep(3)
+            logger.info("Waiting 5s for old bot instance to fully disconnect...")
+            time.sleep(5)
             
             load_dotenv(dotenv_path='.env')
             token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -78,99 +78,103 @@ def start_bot_thread():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            retry_count = 0
-            max_retries = 5
-            
-            try:
-                application = build_application(token)
-                logger.info("Building bot application...")
-                loop.run_until_complete(application.initialize())
-                logger.info("Bot initialized")
+            async def run_polling_with_retry():
+                """Async polling loop with built-in conflict handling"""
+                retry_count = 0
+                max_retries = 10  # More aggressive retries for conflicts
                 
-                loop.run_until_complete(application.start())
-                logger.info("Bot started")
-                
-                # Add small delay to ensure previous instance fully disconnected
-                time.sleep(2)
-                
-                # Start the updater (handles incoming updates) with aggressive retry logic
                 while retry_count < max_retries:
                     try:
-                        logger.info(f"Starting polling (attempt {retry_count + 1}/{max_retries})...")
-                        loop.run_until_complete(application.updater.start_polling(
+                        application = build_application(token)
+                        logger.info(f"Building bot application (attempt {retry_count + 1}/{max_retries})...")
+                        await application.initialize()
+                        logger.info("Bot initialized")
+                        
+                        await application.start()
+                        logger.info("Bot started")
+                        
+                        logger.info("Starting polling...")
+                        await application.updater.start_polling(
                             allowed_updates=None,
-                            drop_pending_updates=True,  # Drop pending to avoid old updates
+                            drop_pending_updates=True,
                             read_timeout=20,
                             write_timeout=20,
                             connect_timeout=20,
                             pool_timeout=20
-                        ))
+                        )
                         
-                        logger.info("Bot polling active and listening for updates")
-                        retry_count = 0  # Reset retry count on success
+                        logger.info("✓ Bot polling active - listening for updates")
+                        retry_count = 0  # Reset on success
                         
-                        # Keep the loop running indefinitely
-                        loop.run_forever()
+                        # Polling will run until stop() is called or error occurs
+                        # Keep thread alive indefinitely
+                        await asyncio.sleep(3600)  # Sleep 1 hour, repeat
                     
-                    except (Conflict, asyncio.CancelledError, Exception) as err:
+                    except Conflict as conflict_err:
                         retry_count += 1
-                        wait_time = min(2 ** retry_count, 60)  # Exponential backoff, max 60s
+                        wait_time = min(3 ** retry_count, 120)  # Exponential: 3, 9, 27, 81, 120s max
+                        logger.error(f"✗ Conflict detected (attempt {retry_count}/{max_retries}): {conflict_err}")
+                        logger.warning(f"  → Another bot instance is running. Waiting {wait_time}s before retry...")
                         
-                        if isinstance(err, Conflict):
-                            logger.warning(f"Conflict error (attempt {retry_count}/{max_retries}): {err}")
-                            logger.info(f"Another bot instance detected. Waiting {wait_time}s before retry...")
-                        elif isinstance(err, asyncio.CancelledError):
-                            logger.warning(f"Task cancelled (attempt {retry_count}/{max_retries})")
-                            logger.info(f"Waiting {wait_time}s before retry...")
-                        else:
-                            logger.error(f"Error (attempt {retry_count}/{max_retries}): {type(err).__name__}: {err}")
-                            logger.info(f"Waiting {wait_time}s before retry...")
-                        
-                        if retry_count >= max_retries:
-                            logger.error(f"Max retries ({max_retries}) exceeded after {wait_time}s backoff. Giving up.")
-                            break
-                        
-                        # Force disconnect to clean up state
+                        # Stop current app instance
                         try:
                             if application.updater.running:
-                                logger.info("Stopping updater...")
-                                loop.run_until_complete(application.updater.stop())
-                        except Exception as stop_err:
-                            logger.warning(f"Error stopping updater: {stop_err}")
+                                await application.updater.stop()
+                            await application.stop()
+                            await application.shutdown()
+                        except Exception as e:
+                            logger.debug(f"Cleanup error: {e}")
                         
-                        time.sleep(wait_time)
+                        # Wait before retry
+                        await asyncio.sleep(wait_time)
                     
-                    except (NetworkError, asyncio.CancelledError) as err:
-                        logger.error(f"Network/cancellation error: {err}")
+                    except (TelegramError, NetworkError) as net_err:
                         retry_count += 1
+                        wait_time = min(2 ** retry_count, 60)
+                        logger.warning(f"Network error (attempt {retry_count}/{max_retries}): {type(net_err).__name__}")
+                        logger.info(f"  → Waiting {wait_time}s before retry...")
                         
-                        if retry_count >= max_retries:
-                            logger.error(f"Max retries exceeded after network errors.")
-                            break
+                        try:
+                            if application.updater.running:
+                                await application.updater.stop()
+                            await application.stop()
+                        except:
+                            pass
                         
-                        wait_time = min(2 ** retry_count, 32)
-                        logger.info(f"Waiting {wait_time}s before retry...")
-                        time.sleep(wait_time)
+                        await asyncio.sleep(wait_time)
+                    
+                    except asyncio.CancelledError:
+                        logger.info("Bot polling cancelled")
+                        break
+                    
+                    except Exception as e:
+                        retry_count += 1
+                        wait_time = min(2 ** retry_count, 60)
+                        logger.error(f"Unexpected error (attempt {retry_count}/{max_retries}): {type(e).__name__}: {e}")
+                        logger.info(f"  → Waiting {wait_time}s before retry...")
+                        
+                        try:
+                            if application.updater.running:
+                                await application.updater.stop()
+                            await application.stop()
+                        except:
+                            pass
+                        
+                        await asyncio.sleep(wait_time)
+                
+                # Max retries exceeded
+                logger.error(f"✗ Max retries ({max_retries}) exceeded. Bot will not restart.")
             
-            except asyncio.CancelledError:
-                logger.info("Bot polling cancelled")
-            except Exception as poll_err:
-                logger.error(f"Unexpected polling error: {poll_err}", exc_info=True)
+            try:
+                loop.run_until_complete(run_polling_with_retry())
+            except Exception as e:
+                logger.error(f"Fatal polling error: {e}", exc_info=True)
             finally:
-                # Graceful shutdown sequence
-                try:
-                    logger.info("Stopping updater...")
-                    loop.run_until_complete(application.updater.stop())
-                    logger.info("Stopping application...")
-                    loop.run_until_complete(application.stop())
-                    logger.info("Shutting down application...")
-                    loop.run_until_complete(application.shutdown())
-                    logger.info("Bot shutdown complete")
-                except Exception as shutdown_err:
-                    logger.warning(f"Shutdown error: {shutdown_err}")
+                # Graceful shutdown
                 loop.close()
+        
         except Exception as e:
-            logger.error(f"Fatal error in bot: {e}", exc_info=True)
+            logger.error(f"Fatal error in bot thread: {e}", exc_info=True)
         finally:
             global bot_initialized
             with bot_lock:
