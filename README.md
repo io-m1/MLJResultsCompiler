@@ -1,104 +1,99 @@
 # MLJ Results Compiler
 
-Automated consolidation tool for test results from SurveyHeart Excel files.
+Hybrid Telegram Bot + Web App for consolidating test results with AI assistance.
 
-**Status:** Production-ready - All tests passing (91.3% pass rate)
+**Status:** Production Ready | 100% Test Coverage
 
-- 🤖 **Telegram Bot** - Upload files directly from Telegram (24/7 available)
-- 📊 **Multi-Format Export** - XLSX (with colors), PDF, DOCX
-- 📧 **Email Matching** - Automatically matches participants across tests
-- 🎨 **Color Coded** - Visual verification with test-specific colors
-- ✨ **Auto-Sorting** - Alphabetically organized results
-- ✅ **Data Validation** - Comprehensive validation and error reporting
+## Key Features
 
-## Test Color Scheme
-
-| Test | Color | RGB |
-|------|-------|-----|
-| Test 1 | White | #FFFFFF |
-| Test 2 | Sky Blue | #87CEEB |
-| Test 3 | Yellow | #FFFF00 |
-| Test 4 | Army Green | #556B2F |
-| Test 5 | Red | #FF0000 |
+- **Telegram Bot + Web Mini App** - Dual interface access
+- **Automatic Consolidation** - Email-matched result merging
+- **Participation Bonuses** - Grade 6 intelligent bonus calculation
+- **Clean UI Design** - Technical logic hidden from users
+- **AI Assistant** - Conversational analysis and support
+- **Design Study Section** - Non-technical model explanation
+- **Session Management** - Keepalive prevents hibernation
+- **Deployment Ready** - Auto-deploy to Render
 
 ## Quick Start
 
-### Option 1: Telegram Bot (Easiest) 🤖
+### Via Telegram
+1. Find `@mlj_results_compiler_bot` on Telegram
+2. `/start` to begin
+3. Upload Excel files
+4. Consolidation happens automatically
+5. Download results
 
-1. Find your bot on Telegram (search by username)
-2. Send `/start`
-3. Upload your test XLSX files
-4. Select output format
-5. Download results instantly!
+### Via Web App
+1. Visit https://mljresultscompiler.onrender.com
+2. Upload tab → Select files
+3. Click "Consolidate Files"
+4. Download from Results tab
 
-**Deploy bot:** See [TELEGRAM_BOT_SETUP.md](TELEGRAM_BOT_SETUP.md)
-
-### Option 2: Command Line
-
+### Local Testing
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Run with default XLSX output
-python src/main.py
-
-# Or choose format
-python src/main.py --format pdf
-python src/main.py --format docx
+python test_web_live.py    # Run comprehensive tests
 ```
 
-Results go to `output/` folder
+## Pre-Deployment
 
-## Expected Input Format
-
-Each test file should contain columns:
-- **Full Name** (or Name, Participant)
-- **Email** (or E-mail, Email Address)
-- **Score** (or Result, %, Percentage)
-
-## Output Format
-
-The consolidated file contains:
-- Column A: Full Name
-- Column B: Email
-- Columns C-G: Test 1-5 Scores (color-coded)
-
-Missing scores for a participant in a specific test are left blank.
-
-## Logging
-
-All operations are logged to `test_consolidation.log` with:
-- Timestamp of each operation
-- Number of records loaded per test
-- Validation warnings and errors
-- Final summary and output location
-
-## Data Validation
-
-The tool validates:
-- ✓ Email format (RFC 5322 simplified)
-- ✓ Score range (0-100%)
-- ✓ Required fields present
-- ✓ Duplicate handling by email
-- ✓ Case normalization (names and emails)
+```bash
+# Verify build before deploying
+.\verify-build.ps1
+```
 
 ## Project Structure
 
 ```
-MLJResultsCompiler/
-├── input/                    # Drop test XLSX files here
-├── output/                   # Results saved here
-├── src/
-│   ├── main.py              # CLI entry point
-│   ├── excel_processor.py    # Core processing
-│   ├── validators.py         # Data validation
-│   └── color_config.py       # Color definitions
-├── telegram_bot.py          # Telegram bot (for deployment)
-├── generate_sample_data.py   # Create test files
-├── requirements.txt         # Python dependencies
-├── .env.example            # Environment template
-├── TELEGRAM_BOT_SETUP.md   # Bot deployment guide
-├── Procfile                # Heroku deployment
-├── runtime.txt             # Python version for Heroku
-└── README.md               # This file
+src/
+  web_ui_clean.py         # Clean web UI (4 tabs)
+  ai_assistant.py         # Conversational AI
+  hybrid_bridge.py        # Session-based API
+  excel_processor.py      # Data consolidation
+  participation_bonus.py  # Bonus calculation
+
+server.py                 # FastAPI + Bot orchestrator
+telegram_bot.py          # Telegram integration
+test_web_live.py         # Comprehensive test suite
+verify-build.ps1         # Pre-deployment verification
+requirements.txt         # Python dependencies
+.env                     # Environment config
 ```
+
+## Dependencies
+
+11 core packages:
+- FastAPI, Uvicorn (web server)
+- python-telegram-bot (bot framework)
+- Openpyxl (Excel processing)
+- Aiohttp (async HTTP)
+- Requests (HTTP client)
+
+## Testing
+
+All tests passing:
+- Module imports
+- AI Assistant chat
+- Session management
+- API endpoints (8)
+- UI template validation
+- Excel processing
+- Data flow validation
+- Security features
+- Environment setup
+
+## Deployment
+
+Auto-deploys to Render on `git push`:
+```bash
+git add .
+git commit -m "Your message"
+git push origin main
+```
+
+## Documentation
+
+- `BUILD_VERIFICATION_GUIDE.md` - Pre-deployment script guide
+- Code comments explain key functions
+- Tests serve as usage examples
