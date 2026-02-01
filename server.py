@@ -92,6 +92,13 @@ def start_bot_thread():
                         await application.initialize()
                         logger.info("Bot initialized")
                         
+                        # CRITICAL: Delete any lingering webhook to prevent Conflict
+                        try:
+                            await application.bot.delete_webhook(drop_pending_updates=True)
+                            logger.info("Deleted any lingering webhook")
+                        except Exception as e:
+                            logger.debug(f"No webhook to delete: {e}")
+                        
                         await application.start()
                         logger.info("Bot started")
                         
@@ -123,7 +130,7 @@ def start_bot_thread():
                                 # Keep retry count reset while polling
                                 if retry_count > 0:
                                     retry_count = 0
-                                    logger.info("Poll successful - retry counter reset")
+                                    logger.info("✓ Poll successful - retry counter reset")
                             
                             except Conflict as conflict_err:
                                 # Conflict detected - exit inner loop to trigger outer retry
@@ -132,9 +139,15 @@ def start_bot_thread():
                     
                     except Conflict as conflict_err:
                         retry_count += 1
-                        wait_time = min(3 ** retry_count, 120)  # Exponential: 3, 9, 27, 81, 120s max
+                        
+                        # LONGER wait for first Conflict (give old instance time to fully disconnect)
+                        if retry_count == 1:
+                            wait_time = 15  # First retry: 15s (was 3s)
+                        else:
+                            wait_time = min(3 ** retry_count, 120)  # Then exponential
+                        
                         logger.error(f"✗ CONFLICT #{retry_count}/{max_retries}: {conflict_err}")
-                        logger.warning(f"  → Waiting {wait_time}s before retry...")
+                        logger.warning(f"  → Waiting {wait_time}s for old instance cleanup...")
                         
                         # Aggressive cleanup
                         try:
