@@ -61,9 +61,10 @@ class TelegramBotHandler:
         
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command"""
-        user_id = update.effective_user.id
-        
-        welcome_text = """
+        try:
+            user_id = update.effective_user.id
+            
+            welcome_text = """
 👋 Welcome to MLJ Results Compiler Bot!
 
 I can help you consolidate test results from multiple Excel files.
@@ -75,10 +76,18 @@ I can help you consolidate test results from multiple Excel files.
 4. Get your results instantly!
 
 📤 **Send your files now** or use /help for more info
-        """
-        
-        await update.message.reply_text(welcome_text)
-        logger.info(f"User {user_id} started the bot")
+            """
+            
+            await update.message.reply_text(welcome_text)
+            logger.info(f"User {user_id} started the bot")
+        except TelegramError as e:
+            logger.error(f"Telegram error in /start: {e}", exc_info=True)
+            try:
+                await update.message.reply_text("❌ Sorry, I encountered an error. Please try again.")
+            except Exception as retry_error:
+                logger.error(f"Failed to send error message: {retry_error}")
+        except Exception as e:
+            logger.error(f"Unexpected error in /start: {e}", exc_info=True)
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command"""
@@ -747,6 +756,26 @@ def build_application(token: str) -> Application:
     application = Application.builder().token(token).build()
     handler = TelegramBotHandler(token)
 
+    # Add keepalive job to prevent Render inactivity timeout
+    # Pings Telegram API every 5 minutes to keep connection alive
+    async def keepalive_job(context):
+        """Periodic job to keep bot alive during inactivity"""
+        try:
+            # Get bot info - lightweight API call that keeps connection alive
+            bot = context.bot
+            bot_info = await bot.get_me()
+            logger.debug(f"Keepalive ping successful - Bot: {bot_info.username}")
+        except Exception as e:
+            logger.warning(f"Keepalive ping failed: {e}")
+
+    # Schedule keepalive job
+    application.job_queue.run_repeating(
+        keepalive_job,
+        interval=300,  # Every 5 minutes
+        first=60,      # First run after 1 minute
+        name="keepalive"
+    )
+
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", handler.start),
@@ -778,7 +807,7 @@ def build_application(token: str) -> Application:
 
 
 def main():
-    """Start the Telegram bot using long polling (local/dev)."""
+    """Start the Telegram bot using long polling with keepalive mechanism."""
     token = os.getenv('TELEGRAM_BOT_TOKEN')
 
     if not token:
@@ -787,8 +816,25 @@ def main():
 
     application = build_application(token)
 
-    logger.info("Starting MLJ Results Compiler Telegram Bot (polling)")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Configure polling with extended timeouts and automatic reconnection
+    logger.info("Starting MLJ Results Compiler Telegram Bot (polling with keepalive)")
+    
+    # Start bot with resilient polling
+    # read_timeout=20: Telegram server timeout
+    # write_timeout=20: Write timeout
+    # connect_timeout=20: Connection timeout
+    # pool_timeout=20: Connection pool timeout
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        read_timeout=20,
+        write_timeout=20,
+        connect_timeout=20,
+        pool_timeout=20,
+        drop_pending_updates=False,  # Don't drop pending updates on restart
+        error_handler=lambda update, context: logger.error(
+            f"Error in bot: {context.error}", exc_info=context.error
+        ) if context.error else None
+    )
 
 
 if __name__ == "__main__":
