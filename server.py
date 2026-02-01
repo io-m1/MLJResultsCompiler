@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Global bot thread
 bot_thread = None
+bot_stop_event = None
 
 
 def start_bot_thread():
@@ -59,8 +60,9 @@ def start_bot_thread():
         except Exception as e:
             logger.error(f"Fatal error in bot: {e}", exc_info=True)
     
-    # Run bot in daemon thread (won't block server shutdown)
-    thread = threading.Thread(target=bot_worker, daemon=True)
+    # Run bot in non-daemon thread (will continue even if FastAPI shuts down)
+    # This keeps the bot responsive during Render spin-downs
+    thread = threading.Thread(target=bot_worker, daemon=False)
     thread.start()
     return thread
 
