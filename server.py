@@ -131,10 +131,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Include web UI router
+from src.web_ui import router as ui_router
+app.include_router(ui_router)
 
-@app.get("/")
-async def root():
-    """Health check endpoint"""
+
+@app.get("/api/status")
+async def status():
+    """API status endpoint"""
     return {
         "status": "ok",
         "service": "MLJ Results Compiler Bot",
