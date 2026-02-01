@@ -9,15 +9,6 @@ import openpyxl
 from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
 import logging
-from docx import Document
-from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from PIL import Image, ImageDraw, ImageFont
 
 from src.validators import clean_name, clean_email, parse_score, validate_row_data
 from src.color_config import get_fill_for_test, TEST_COLORS
@@ -425,15 +416,18 @@ class ExcelProcessor:
     def generate_preview_image(self, consolidated_data: Dict, max_rows: int = 12) -> Optional[Path]:
         """
         Generate a visual preview image showing consolidation summary and data table
+        PIL is optional - returns None if not available
         
         Args:
             consolidated_data (Dict): Consolidated results
             max_rows (int): Maximum rows to show in preview
             
         Returns:
-            Path: Path to generated image file, or None if failed
+            Path: Path to generated image file, or None if failed or PIL not available
         """
         try:
+            from PIL import Image, ImageDraw, ImageFont
+            
             # Get test numbers and stats
             test_nums = set()
             for data in consolidated_data.values():
@@ -712,15 +706,21 @@ class ExcelProcessor:
     def save_as_pdf(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.pdf") -> bool:
         """
         Save consolidated results to PDF file (dynamic columns)
+        reportlab is optional - returns False if not available
         
         Args:
             consolidated_data (Dict): Consolidated results
             output_filename (str): Output filename
             
         Returns:
-            bool: True if successful
+            bool: True if successful, False if reportlab not available or error
         """
         try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+            from reportlab.lib.styles import getSampleStyleSheet
+            
             logger.info(f"Saving results as PDF: {output_filename}")
             
             # Get test numbers
@@ -788,15 +788,18 @@ class ExcelProcessor:
     def save_as_docx(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.docx") -> bool:
         """
         Save consolidated results to DOCX file (dynamic columns)
+        python-docx is optional - returns False if not available
         
         Args:
             consolidated_data (Dict): Consolidated results
             output_filename (str): Output filename
             
         Returns:
-            bool: True if successful
+            bool: True if successful, False if docx module not available or error
         """
         try:
+            from docx import Document
+            
             logger.info(f"Saving results as DOCX: {output_filename}")
             
             # Get test numbers
