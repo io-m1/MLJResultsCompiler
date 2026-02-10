@@ -7,16 +7,17 @@ import os
 from pathlib import Path
 from typing import Optional
 try:
-    from pydantic_settings import BaseSettings
-    from pydantic import Field, field_validator, ConfigDict
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+    from pydantic import Field, field_validator
+    ConfigDict = SettingsConfigDict
 except ImportError:
     try:
-        from pydantic import BaseSettings, Field, field_validator, ConfigDict
-    except ImportError:
-        # Fallback to v1 syntax
         from pydantic import BaseSettings, Field, validator
         field_validator = validator
         ConfigDict = None
+    except ImportError:
+        # Fallback to even older versions if necessary
+        raise
 
 
 class Settings(BaseSettings):
