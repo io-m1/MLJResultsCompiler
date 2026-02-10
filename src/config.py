@@ -7,17 +7,25 @@ import os
 from pathlib import Path
 from typing import Optional
 try:
+    # Pydantic V2
     from pydantic_settings import BaseSettings, SettingsConfigDict
     from pydantic import Field, field_validator
     ConfigDict = SettingsConfigDict
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     try:
+        # Pydantic V1
         from pydantic import BaseSettings, Field, validator
         field_validator = validator
         ConfigDict = None
-    except ImportError:
-        # Fallback to even older versions if necessary
-        raise
+    except Exception:
+        # Robust fallback for V2 environments missing pydantic-settings
+        from pydantic import Field
+        try:
+            from pydantic.v1 import BaseSettings, validator
+            field_validator = validator
+            ConfigDict = None
+        except ImportError:
+            raise ImportError("Could not import BaseSettings. Please install 'pydantic-settings' for Pydantic V2.")
 
 
 class Settings(BaseSettings):
@@ -71,43 +79,62 @@ class Settings(BaseSettings):
     WORKERS: int = 4
     RELOAD: bool = False
     
-    # Pydantic v2 configuration (preferred)
-    try:
+    # Pydantic configuration
+    if ConfigDict is not None:
         model_config = ConfigDict(
             env_file=".env",
-            env_file_encoding="utf-8",
-            case_sensitive=True
+            env_file_encoding="utf-16le", # Common encoding for some local editors
+            case_sensitive=True,
+            extra="allow"
         )
-    except NameError:
-        # Fallback for Pydantic v1 (when ConfigDict is not available)
+    else:
         class Config:
-            """Pydantic v1 config (fallback)"""
             env_file = ".env"
             env_file_encoding = "utf-8"
             case_sensitive = True
+            extra = "allow"
     
-    @field_validator("ENABLE_AI_ASSISTANT", mode="before")
-    @classmethod
-    def set_ai_enabled(cls, v, info):
-        """Enable AI if API key is set"""
-        values = info.data if hasattr(info, 'data') else info.values if hasattr(info, 'values') else {}
-        return bool(values.get("GROQ_API_KEY"))
-    
-    @field_validator("ENABLE_TELEGRAM_BOT", mode="before")
-    @classmethod
-    def set_telegram_enabled(cls, v, info):
-        """Enable bot if token is set"""
-        values = info.data if hasattr(info, 'data') else info.values if hasattr(info, 'values') else {}
-        return bool(values.get("TELEGRAM_BOT_TOKEN"))
-    
-    @field_validator("ENV")
-    @classmethod
-    def validate_env(cls, v):
-        """Validate environment"""
-        valid = ["development", "staging", "production"]
-        if v not in valid:
-            raise ValueError(f"ENV must be one of {valid}")
-        return v
+    if ConfigDict is not None:
+        @field_validator("ENABLE_AI_ASSISTANT", mode="before")
+        @classmethod
+        def set_ai_enabled(cls, v, info):
+            """Enable AI if API key is set"""
+            values = info.data if hasattr(info, 'data') else {}
+            return bool(values.get("GROQ_API_KEY"))
+        
+        @field_validator("ENABLE_TELEGRAM_BOT", mode="before")
+        @classmethod
+        def set_telegram_enabled(cls, v, info):
+            """Enable bot if token is set"""
+            values = info.data if hasattr(info, 'data') else {}
+            return bool(values.get("TELEGRAM_BOT_TOKEN"))
+            
+        @field_validator("ENV")
+        @classmethod
+        def validate_env(cls, v):
+            """Validate environment"""
+            valid = ["development", "staging", "production"]
+            if v not in valid:
+                raise ValueError(f"ENV must be one of {valid}")
+            return v
+    else:
+        @validator("ENABLE_AI_ASSISTANT", pre=True, allow_reuse=True)
+        def set_ai_enabled(cls, v, values):
+            """Enable AI if API key is set"""
+            return bool(values.get("GROQ_API_KEY"))
+        
+        @validator("ENABLE_TELEGRAM_BOT", pre=True, allow_reuse=True)
+        def set_telegram_enabled(cls, v, values):
+            """Enable bot if token is set"""
+            return bool(values.get("TELEGRAM_BOT_TOKEN"))
+            
+        @validator("ENV", allow_reuse=True)
+        def validate_env(cls, v):
+            """Validate environment"""
+            valid = ["development", "staging", "production"]
+            if v not in valid:
+                raise ValueError(f"ENV must be one of {valid}")
+            return v
     
     def __init__(self, **data):
         """Initialize settings and validate required fields for production"""
