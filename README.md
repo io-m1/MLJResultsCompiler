@@ -1,16 +1,27 @@
 # MLJ Results Compiler
 
-**Excel consolidation and grading system for educational results.**
+**Intelligent conversational document processing bot with advanced test consolidation capabilities.**
 
 Version: 0.2.0 | Status: **Alpha** | License: MIT
 
-## What This Does
+⚡ **NEW:** Built-in hibernation prevention for free tier hosting - bot stays responsive 24/7!
 
-Takes messy Excel results from multiple sources, consolidates by email, applies business rules (bonuses, pass/fail), and delivers results via:
-- **Telegram Bot** (real-time, mobile-friendly)
-- **Web UI** (upload/download interface)
+## 🌟 Features
 
-**Current Maturity:** Core pipeline works. Ready for low-volume use. Not yet enterprise-hardened.
+### Core Capabilities
+- 🤖 **Telegram Bot** - Upload files directly from Telegram (24/7 available)
+- 💬 **Conversational AI** - Natural language understanding and intent detection
+- 📊 **Multi-Format Support** - Handle Excel, CSV, images, PDFs, and more
+- 📧 **Email Matching** - Automatically matches participants across tests
+- 🎨 **Color Coded** - Visual verification with test-specific colors
+- ✨ **Auto-Sorting** - Alphabetically organized results
+- ✅ **Data Validation** - Comprehensive validation and error reporting
+
+### Intelligent Processing
+- 🎯 **Intent Detection** - Understands what you want to do
+- 🔀 **Smart Routing** - Automatically selects the right processing agent
+- 📈 **Context Awareness** - Maintains conversation history for better responses
+- 🚀 **Multi-Agent System** - Specialized agents for different document types
 
 ## Currently Implemented ✅
 
@@ -24,83 +35,39 @@ Takes messy Excel results from multiple sources, consolidates by email, applies 
 
 ### Interfaces
 - ✅ Web UI: Upload files, view results, download consolidation
-- ✅ Telegram Bot: Command-driven interaction
+- ✅ Telegram Bot: Conversational and command-driven interaction
 - ✅ REST API: Programmatic access (hybrid_bridge endpoints)
 
 ### Data & Operations
-- ✅ Session persistence: Survives server restarts
+- ✅ **Session persistence**: Survives server restarts (SQLite backend)
+- ✅ **Security**: Path traversal protection for file operations
 - ✅ Automatic cleanup: Expired sessions removed daily
-- ✅ CI/CD automation: Tests run on every commit (Python 3.10-3.12)
+- ✅ CI/CD automation: Tests run on every commit
 - ✅ Error tracking: Structured logging for debugging
-
-### Under Development
-- 🟡 Service architecture: Ready for deployment split
-- 🟡 Security hardening: Tier 3 planned
-- 🟡 Monitoring: Health endpoints ready
-
-## Not Yet Ready ⚠️
-
-- ❌ Multi-school support: Data isolation not implemented
-- ❌ High-volume load: Not tested >1000 records
-- ❌ AI features: Optional, incomplete, feature-flagged
-- ❌ Enterprise security: Path traversal risk identified
-- ❌ Advanced reporting: Only basic Excel export
 
 ## Quick Start
 
 ### Via Telegram
-```
-1. @mlj_results_compiler_bot on Telegram
-2. /start
-3. Send Excel files
-4. Results ready immediately
-```
+1. Find your bot on Telegram (search by username)
+2. Send `/start`
+3. Just tell the bot what you want! Examples:
+   - "I want to consolidate test results"
+   - "Merge my Excel files"
+4. Upload your test XLSX files
+5. Download results instantly!
 
 ### Via Web
-```
-Visit: https://mljresultscompiler.onrender.com
+Visit: `https://mljresultscompiler.onrender.com`
 Upload → Consolidate → Download
-```
 
-### Local Development
-```bash
-pip install -r requirements.txt
-python -m pytest tests/
-```
-  ai_assistant.py         # Conversational AI
-  hybrid_bridge.py        # Session-based API
-  excel_processor.py      # Data consolidation
-  participation_bonus.py  # Bonus calculation
+## Architecture
 
-server.py                 # FastAPI + Bot orchestrator
-telegram_bot.py          # Telegram integration
-test_web_live.py         # Comprehensive test suite
-verify-build.ps1         # Pre-deployment verification
-requirements.txt         # Python dependencies
-.env                     # Environment config
-```
-
-## Dependencies
-
-11 core packages:
-- FastAPI, Uvicorn (web server)
-- python-telegram-bot (bot framework)
-- Openpyxl (Excel processing)
-- Aiohttp (async HTTP)
-- Requests (HTTP client)
-
-## Testing
-
-All tests passing:
-- Module imports
-- AI Assistant chat
-- Session management
-- API endpoints (8)
-- UI template validation
-- Excel processing
-- Data flow validation
-- Security features
-- Environment setup
+### Multi-Agent System
+The bot uses a modular agent-based architecture:
+1. **Intent Engine** - Detects user intent from natural language
+2. **Document Parser** - Handles multiple file formats
+3. **Agent Router** - Selects the appropriate processing agent
+4. **Specialized Agents** - Execute specific tasks (test compilation, OCR, etc.)
 
 ## Deployment
 
@@ -111,8 +78,6 @@ git commit -m "Your message"
 git push origin main
 ```
 
-## Documentation
-
-- `BUILD_VERIFICATION_GUIDE.md` - Pre-deployment script guide
-- Code comments explain key functions
-- Tests serve as usage examples
+**Important for Free Tier Hosting:**
+- Set `ENABLE_KEEP_ALIVE=true` to prevent inactivity hibernation.
+- Ping interval is managed via GitHub Actions.

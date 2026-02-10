@@ -20,6 +20,7 @@ from src.excel_processor import ExcelProcessor
 from src.participation_bonus import ParticipationBonusCalculator
 from src.ai_assistant import get_assistant
 from src.async_ai_service import get_async_ai_service
+from src.session_manager import SessionManager
 
 router = APIRouter(prefix="/api/hybrid", tags=["hybrid"])
 
@@ -31,21 +32,8 @@ LAST_ACTIVITY = datetime.now()  # Track last API activity
 session_manager = SessionManager()
 
 def cleanup_old_sessions():
-    """Remove expired sessions (both memory and filesystem)"""
-    now = datetime.now()
-    expired = [sid for sid, data in UPLOAD_SESSIONS.items() 
-               if now - data['created'] > timedelta(seconds=SESSION_TIMEOUT)]
-    for sid in expired:
-        # CRITICAL FIX: Also clean up filesystem
-        temp_dir = Path(f"temp_uploads/{sid}")
-        if temp_dir.exists():
-            try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            except Exception as e:
-                import logging
-                logging.warning(f"Failed to cleanup {temp_dir}: {e}")
-        
-        del UPLOAD_SESSIONS[sid]
+    """Remove expired sessions via the persistent database"""
+    db.cleanup_expired_sessions()
 
 def record_activity():
     """Record API activity (prevents hibernation)"""
