@@ -1,0 +1,17 @@
+name: Render Keepalive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Run every 10 minutes
+  workflow_dispatch:        # Allow manual triggering
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render App
+        run: |
+          URL="https://mljresultscompiler.onrender.com/ping"
+          echo "Pinging $URL..."
+          curl -s -f "$URL" || (echo "Ping failed!" && exit 1)
+          echo "✓ Success"

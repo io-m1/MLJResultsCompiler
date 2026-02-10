@@ -707,158 +707,16 @@ class ExcelProcessor:
     
     def save_as_pdf(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.pdf") -> bool:
         """
-        Save consolidated results to PDF file (dynamic columns)
-        reportlab is optional - returns False if not available
-        
-        Args:
-            consolidated_data (Dict): Consolidated results
-            output_filename (str): Output filename
-            
-        Returns:
-            bool: True if successful, False if reportlab not available or error
+        Stub for PDF export. 
+        Note: Currently disabled due to missing reportlab dependency.
         """
-        try:
-            from reportlab.lib import colors
-            from reportlab.lib.pagesizes import letter
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
-            from reportlab.lib.styles import getSampleStyleSheet
-            
-            logger.info(f"Saving results as PDF: {output_filename}")
-            
-            # Get test numbers
-            test_nums = []
-            if consolidated_data:
-                first_record = next(iter(consolidated_data.values()))
-                for key in first_record:
-                    if key.startswith('test_') and key.endswith('_score'):
-                        test_num = int(key.split('_')[1])
-                        test_nums.append(test_num)
-                test_nums = sorted(test_nums)
-            
-            # Prepare data for table
-            data = [['Full Name', 'Email'] + [f'Test {num}' for num in test_nums]]
-            
-            for email, record in consolidated_data.items():
-                row = [
-                    record['name'],
-                    email
-                ] + [str(record.get(f'test_{num}_score') or '') for num in test_nums]
-                data.append(row)
-            
-            # Create PDF
-            output_path = self.output_dir / output_filename
-            doc = SimpleDocTemplate(str(output_path), pagesize=letter, topMargin=0.5*inch)
-            
-            # Calculate column widths dynamically
-            col_widths = [1.8*inch, 2.2*inch] + [0.9*inch] * len(test_nums)
-            table = Table(data, colWidths=col_widths)
-            
-            # Style table
-            style_commands = [
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
-            ]
-            
-            # Add color backgrounds to test score columns dynamically
-            for row_idx in range(1, len(data)):
-                for col_offset, test_num in enumerate(test_nums):
-                    col_idx = col_offset + 2  # Starting from column C
-                    color_hex = TEST_COLORS.get(test_num, {}).get('rgb', 'FFFFFF')
-                    rgb = colors.HexColor(f'#{color_hex}')
-                    style_commands.append(('BACKGROUND', (col_idx, row_idx), (col_idx, row_idx), rgb))
-            
-            table.setStyle(TableStyle(style_commands))
-            
-            # Build PDF
-            elements = [table]
-            doc.build(elements)
-            
-            logger.info(f"Saved PDF results to {output_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error saving PDF file: {str(e)}")
-            return False
-    
+        logger.warning("PDF export is currently disabled. Add 'reportlab' to requirements.txt to enable.")
+        return False
+
     def save_as_docx(self, consolidated_data: Dict, output_filename: str = "Consolidated_Results.docx") -> bool:
         """
-        Save consolidated results to DOCX file (dynamic columns)
-        python-docx is optional - returns False if not available
-        
-        Args:
-            consolidated_data (Dict): Consolidated results
-            output_filename (str): Output filename
-            
-        Returns:
-            bool: True if successful, False if docx module not available or error
+        Stub for DOCX export.
+        Note: Currently disabled due to missing python-docx dependency.
         """
-        try:
-            from docx import Document
-            
-            logger.info(f"Saving results as DOCX: {output_filename}")
-            
-            # Get test numbers
-            test_nums = []
-            if consolidated_data:
-                first_record = next(iter(consolidated_data.values()))
-                for key in first_record:
-                    if key.startswith('test_') and key.endswith('_score'):
-                        test_num = int(key.split('_')[1])
-                        test_nums.append(test_num)
-                test_nums = sorted(test_nums)
-            
-            # Create document
-            doc = Document()
-            doc.add_heading('Consolidated Test Results', 0)
-            
-            # Add summary
-            doc.add_paragraph(f'Total Participants: {len(consolidated_data)}')
-            doc.add_paragraph(f'Tests Included: {len(test_nums)}')
-            doc.add_paragraph('')
-            
-            # Create table with dynamic columns
-            num_cols = len(test_nums) + 2  # Name + Email + Tests
-            table = doc.add_table(rows=1, cols=num_cols)
-            table.style = 'Light Grid Accent 1'
-            
-            # Add header row
-            header_cells = table.rows[0].cells
-            headers = ['Full Name', 'Email'] + [f'Test {num}' for num in test_nums]
-            
-            for idx, header_text in enumerate(headers):
-                header_cells[idx].text = header_text
-                # Style header
-                paragraph = header_cells[idx].paragraphs[0]
-                paragraph.runs[0].font.bold = True
-            
-            # Add data rows
-            for email, record in consolidated_data.items():
-                row_cells = table.add_row().cells
-                row_cells[0].text = record['name']
-                row_cells[1].text = email
-                
-                for col_offset, test_num in enumerate(test_nums):
-                    row_cells[col_offset + 2].text = str(record.get(f'test_{test_num}_score') or '')
-                
-                # Center align score columns
-                for col_idx in range(2, 2 + len(test_nums)):
-                    for paragraph in row_cells[col_idx].paragraphs:
-                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
-            # Save document
-            output_path = self.output_dir / output_filename
-            doc.save(output_path)
-            
-            logger.info(f"Saved DOCX results to {output_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error saving DOCX file: {str(e)}")
-            return False
+        logger.warning("DOCX export is currently disabled. Add 'python-docx' to requirements.txt to enable.")
+        return False

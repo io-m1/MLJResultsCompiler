@@ -308,6 +308,12 @@ def create_app() -> FastAPI:
                 "version": settings.APP_VERSION,
             }, 503
     
+    # Ping endpoint for keepalive
+    @app.get("/ping", tags=["ping"])
+    async def ping():
+        """Minimal ping endpoint for keepalive systems"""
+        return {"status": "pong"}
+    
     # Status endpoint
     @app.get("/status", tags=["status"])
     async def status():

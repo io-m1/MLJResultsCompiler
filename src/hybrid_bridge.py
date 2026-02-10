@@ -14,16 +14,17 @@ import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 import asyncio
+from src.session_storage import get_session_db
+from src.validators import validate_email, clean_name, clean_email
 from src.excel_processor import ExcelProcessor
 from src.participation_bonus import ParticipationBonusCalculator
-from src.session_manager import SessionManager
 from src.ai_assistant import get_assistant
 from src.async_ai_service import get_async_ai_service
 
 router = APIRouter(prefix="/api/hybrid", tags=["hybrid"])
 
-# In-memory session storage (in production, use Redis/database)
-UPLOAD_SESSIONS = {}
+# Persistent session storage
+db = get_session_db()
 SESSION_TIMEOUT = 3600  # 1 hour
 LAST_ACTIVITY = datetime.now()  # Track last API activity
 
@@ -65,17 +66,9 @@ async def keepalive():
 async def create_session(source: str = Query("web", description="Source: web or telegram")):
     """Create a new upload session"""
     record_activity()
-    cleanup_old_sessions()
+    db.cleanup_expired_sessions()
     
-    session_id = str(uuid.uuid4())
-    UPLOAD_SESSIONS[session_id] = {
-        "created": datetime.now(),
-        "source": source,
-        "files": [],
-        "status": "uploading",
-        "consolidation_result": None,
-        "last_activity": datetime.now()
-    }
+    session_id = db.create_session(source=source, expires_in=SESSION_TIMEOUT)
     
     return {
         "session_id": session_id,
@@ -92,36 +85,38 @@ async def upload_file(
     """Upload test file to session"""
     record_activity()
     
-    if session_id not in UPLOAD_SESSIONS:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    session = UPLOAD_SESSIONS[session_id]
-    session["last_activity"] = datetime.now()
-    
     try:
+        # CRITICAL SECURITY FIX: Sanitize filename to prevent path traversal
+        from werkzeug.utils import secure_filename
+        safe_filename = secure_filename(file.filename)
+        if not safe_filename:
+            # Fallback for completely non-ascii filenames
+            safe_filename = f"upload_{uuid.uuid4().hex[:8]}.xlsx"
+            
         # Save file temporarily
         temp_dir = Path(f"temp_uploads/{session_id}")
         temp_dir.mkdir(parents=True, exist_ok=True)
         
-        file_path = temp_dir / file.filename
+        file_path = temp_dir / safe_filename
+        content = await file.read()
+        
         with open(file_path, "wb") as f:
-            content = await file.read()
             f.write(content)
         
-        session["files"].append({
-            "name": file.filename,
-            "size": len(content),
-            "uploaded_at": datetime.now().isoformat(),
-            "path": str(file_path)
-        })
+        db.add_upload(session_id, safe_filename, len(content))
         
         return {
             "status": "success",
-            "message": f"File '{file.filename}' uploaded",
-            "files_count": len(session["files"]),
+            "message": f"File '{safe_filename}' uploaded",
             "session_id": session_id
         }
     except Exception as e:
+        import logging
+        logging.error(f"Upload error: {e}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @router.get("/session/{session_id}")
@@ -129,18 +124,18 @@ async def get_session(session_id: str):
     """Get session details and current status"""
     record_activity()
     
-    if session_id not in UPLOAD_SESSIONS:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    session = UPLOAD_SESSIONS[session_id]
-    session["last_activity"] = datetime.now()
+    uploads = db.get_uploads(session_id)
     
     return {
         "session_id": session_id,
         "source": session["source"],
-        "files": session["files"],
+        "files": uploads,
         "status": session["status"],
-        "files_count": len(session["files"]),
+        "files_count": len(uploads),
         "web_url": f"https://mljresultscompiler.onrender.com/app?session={session_id}"
     }
 
@@ -153,20 +148,17 @@ async def consolidate_results(
     """Consolidate uploaded files"""
     record_activity()
     
-    if session_id not in UPLOAD_SESSIONS:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    session = UPLOAD_SESSIONS[session_id]
-    session["last_activity"] = datetime.now()
-    
-    if not session["files"]:
+    uploads = db.get_uploads(session_id)
+    if not uploads:
         raise HTTPException(status_code=400, detail="No files uploaded")
     
     try:
-        session["status"] = "consolidating"
-        
         # Process files
-        file_paths = [f["path"] for f in session["files"]]
+        file_paths = [str(Path(f"temp_uploads/{session_id}") / f["filename"]) for f in uploads]
         processor = ExcelProcessor("temp_uploads", "temp_uploads")
         
         # Load each file as a test (numbered 1, 2, 3, etc.)
@@ -207,21 +199,16 @@ async def consolidate_results(
         # Use absolute path to ensure file is found
         result_path = str(output_dir.resolve() / result_filename)
         
-        # Save using the correct method - set output_dir as Path object
+        # Save using the correct method
         processor.output_dir = output_dir
         processor.save_consolidated_file(consolidated_data, result_filename)
         
-        # Verify file was saved
-        if not os.path.exists(result_path):
-            raise Exception(f"Failed to save result file: {result_path}")
-        
-        session["status"] = "completed"
-        session["consolidation_result"] = {
-            "result_id": result_id,
-            "path": result_path,
-            "data_rows": len(consolidated_data),
-            "completed_at": datetime.now().isoformat()
-        }
+        # Record result in database
+        db.add_consolidation_result(
+            session_id=session_id,
+            file_path=result_path,
+            metadata={"rows": len(consolidated_data), "result_id": result_id}
+        )
         
         return {
             "status": "success",
@@ -232,7 +219,8 @@ async def consolidate_results(
             "telegram_share": f"Your results are ready! View them here: https://mljresultscompiler.onrender.com/app?session={session_id}&result={result_id}"
         }
     except Exception as e:
-        session["status"] = "error"
+        import logging
+        logging.error(f"Consolidation error: {e}")
         raise HTTPException(status_code=500, detail=f"Consolidation failed: {str(e)}")
 
 @router.get("/download/{session_id}/{result_id}")
@@ -240,16 +228,15 @@ async def download_result(session_id: str, result_id: str):
     """Download consolidated result file"""
     record_activity()
     
-    if session_id not in UPLOAD_SESSIONS:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    session = UPLOAD_SESSIONS[session_id]
-    session["last_activity"] = datetime.now()
-    
-    if not session["consolidation_result"] or session["consolidation_result"]["result_id"] != result_id:
+    result = db.get_consolidation_result(session_id)
+    if not result or result["metadata"].get("result_id") != result_id:
         raise HTTPException(status_code=404, detail="Result not found")
     
-    result_path = session["consolidation_result"]["path"]
+    result_path = result["file_path"]
     if not os.path.exists(result_path):
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -264,16 +251,20 @@ async def delete_session(session_id: str):
     """Delete session and cleanup files"""
     record_activity()
     
-    if session_id not in UPLOAD_SESSIONS:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
     # Cleanup files
     temp_dir = Path(f"temp_uploads/{session_id}")
     if temp_dir.exists():
         import shutil
-        shutil.rmtree(temp_dir)
+        shutil.rmtree(temp_dir, ignore_errors=True)
     
-    del UPLOAD_SESSIONS[session_id]
+    # SQLite delete cascades if configured, but we'll manually ensure for safety
+    # Actually, we need a method to delete from DB
+    with db.get_connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
     
     return {"status": "success", "message": "Session deleted"}
 
@@ -283,39 +274,38 @@ async def api_status():
     record_activity()
     
     time_since_activity = (datetime.now() - LAST_ACTIVITY).total_seconds()
+    stats = db.get_session_statistics()
     
     return {
         "status": "online",
-        "active_sessions": len(UPLOAD_SESSIONS),
+        "active_sessions": stats["total_sessions"],
         "last_activity_seconds_ago": time_since_activity,
         "hibernation_risk": "low" if time_since_activity < 600 else "high",
         "timestamp": datetime.now().isoformat()
     }
 
 async def execute_data_transformations(session_id: str, actions: list) -> dict:
-    """
-    CRITICAL FIX: Execute data transformations for chat-initiated requests.
-    This bridges the gap between chat interface and data execution pipeline.
-    """
-    if session_id not in UPLOAD_SESSIONS:
+    """Execute data transformations for chat-initiated requests."""
+    session = db.get_session(session_id)
+    if not session:
         return {"success": False, "error": "Session not found"}
     
-    session = UPLOAD_SESSIONS[session_id]
-    
-    if not session.get("consolidation_result"):
+    result = db.get_consolidation_result(session_id)
+    if not result:
         return {"success": False, "error": "No consolidated data available"}
     
     try:
+        from src.ai_assistant import get_assistant
         assistant = get_assistant()
         assistant.session_context = {
-            "files_count": len(session.get("files", [])),
+            "files_count": len(db.get_uploads(session_id)),
             "status": session.get("status"),
             "has_results": True,
-            "result_path": session["consolidation_result"].get("path")
+            "result_path": result.get("file_path")
         }
         
-        result = assistant.execute_data_actions(session_id, actions)
-        return result
+        res = assistant.execute_data_actions(session_id, actions)
+        return res
     except Exception as e:
         import logging
         logging.error(f"Data transformation error: {e}")
@@ -336,16 +326,18 @@ async def ai_assist(request: Request):
         
         # Build session context for awareness
         context = {}
-        if session_id and session_id in UPLOAD_SESSIONS:
-            session = UPLOAD_SESSIONS[session_id]
+        session = db.get_session(session_id) if session_id else None
+        if session:
+            result = db.get_consolidation_result(session_id)
             context = {
-                "files_count": len(session.get("files", [])),
+                "files_count": len(db.get_uploads(session_id)),
                 "status": session.get("status"),
-                "has_results": session.get("consolidation_result") is not None,
+                "has_results": result is not None,
                 "error": session.get("error")
             }
         
         # Get assistant with context
+        from src.ai_assistant import get_assistant
         assistant = get_assistant()
         
         # CRITICAL FIX: Check if user is asking for data actions
@@ -354,9 +346,9 @@ async def ai_assist(request: Request):
         if data_request.get("execute") and data_request.get("actions"):
             # User is asking for data manipulation - execute directly
             # Get consolidated data first
-            if session_id and session_id in UPLOAD_SESSIONS:
-                session = UPLOAD_SESSIONS[session_id]
-                if session.get("consolidation_result"):
+            if session:
+                result = db.get_consolidation_result(session_id)
+                if result:
                     # Execute data actions and return result
                     try:
                         result = await execute_data_transformations(
@@ -395,6 +387,7 @@ async def ai_assist(request: Request):
                 }
         
         # Otherwise, analyze with context awareness (conversational response)
+        from src.async_ai_service import get_async_ai_service
         async_ai = get_async_ai_service()
         analysis = await async_ai.analyze_message_async(message, session_id, context)
         
@@ -578,12 +571,12 @@ async def execute_data_action(session_id: str, request: Request):
     """
     record_activity()
     
-    if session_id not in UPLOAD_SESSIONS:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    session = UPLOAD_SESSIONS[session_id]
-    
-    if session.get("status") != "completed" or not session.get("consolidation_result"):
+    result_info = db.get_consolidation_result(session_id)
+    if session.get("status") != "completed" or not result_info:
         return {
             "success": False,
             "error": "No consolidated data available. Please consolidate files first."
@@ -591,15 +584,15 @@ async def execute_data_action(session_id: str, request: Request):
     
     try:
         body = await request.json()
+        from src.ai_assistant import get_assistant
         assistant = get_assistant()
         
         # Pass session context including result path
-        result_info = session["consolidation_result"]
         assistant.session_context = {
-            "files_count": len(session.get("files", [])),
+            "files_count": len(db.get_uploads(session_id)),
             "status": session.get("status"),
             "has_results": True,
-            "result_path": result_info.get("path")
+            "result_path": result_info.get("file_path")
         }
         
         # Determine if natural language or direct actions
@@ -679,12 +672,12 @@ async def preview_data(session_id: str, rows: int = Query(10, description="Numbe
     """Preview consolidated data (first N rows)"""
     record_activity()
     
-    if session_id not in UPLOAD_SESSIONS:
+    session = db.get_session(session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    session = UPLOAD_SESSIONS[session_id]
-    
-    if session.get("status") != "completed" or not session.get("consolidation_result"):
+    result = db.get_consolidation_result(session_id)
+    if not result:
         return {
             "success": False,
             "error": "No consolidated data available"
@@ -692,15 +685,14 @@ async def preview_data(session_id: str, rows: int = Query(10, description="Numbe
     
     try:
         import pandas as pd
-        result_path = session["consolidation_result"]["path"]
+        result_path = result["file_path"]
         data = pd.read_excel(result_path)
         
         return {
             "success": True,
             "total_rows": len(data),
             "columns": list(data.columns),
-            "preview": data.head(rows).to_dict(orient="records"),
-            "last_modification": session.get("last_modification")
+            "preview": data.head(rows).to_dict(orient="records")
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
