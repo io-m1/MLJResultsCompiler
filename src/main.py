@@ -72,6 +72,7 @@ def start_bot_thread():
             # Import here to avoid circular imports
             try:
                 from telegram_bot import build_application
+                from telegram import Update
                 from telegram.error import Conflict, NetworkError, TelegramError
             except Exception as e:
                 logger.error(f"Failed to import telegram_bot: {e}")
@@ -97,19 +98,23 @@ def start_bot_thread():
                         logger.info("✓ Bot initialized")
                         
                         # Delete any lingering webhook
+                        # Delete any lingering webhook
                         try:
                             await application.bot.delete_webhook(drop_pending_updates=True)
                         except:
                             pass
                         
-                        await application.start()
-                        await application.updater.start_polling()
-                        logger.info("✓ Bot started and polling")
-                        logger.info("Bot is now listening for updates...")
-                        
-                        # Keep running until cancelled
-                        while True:
-                            await asyncio.sleep(3600)
+                        logger.info("Starting bot with run_polling()...")
+                        # run_polling handles the loop and keeps running until stopped
+                        # We disable signal handling (stop_signals=[]) because uvicorn handles signals
+                        await application.run_polling(
+                            allowed_updates=Update.ALL_TYPES, 
+                            stop_signals=[], 
+                            close_loop=False,
+                            drop_pending_updates=True
+                        )
+                        logger.info("Bot stopped gracefully")
+                        return  # Exit retry loop if stopped gracefully
                         
                     except Conflict as e:
                         retry_count += 1
