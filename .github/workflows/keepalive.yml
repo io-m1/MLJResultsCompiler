@@ -11,7 +11,11 @@ jobs:
     steps:
       - name: Ping Render App
         run: |
-          URL="https://mljresultscompiler.onrender.com/ping"
+          URL="https://mljresultscompiler.onrender.com/health"
           echo "Pinging $URL..."
-          curl -s -f "$URL" || (echo "Ping failed!" && exit 1)
+          if ! curl -s -f "$URL"; then
+            echo "Ping failed! Triggering deploy hook..."
+            curl -X POST "https://api.render.com/deploy/srv-d5v2bviqcgvc7398shog?key=JXiRdSFkZO8"
+            exit 1
+          fi
           echo "✓ Success"
