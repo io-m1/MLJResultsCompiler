@@ -103,10 +103,13 @@ def start_bot_thread():
                             pass
                         
                         await application.start()
-                        logger.info("✓ Bot started")
+                        await application.updater.start_polling()
+                        logger.info("✓ Bot started and polling")
                         logger.info("Bot is now listening for updates...")
                         
-                        yield  # Keep running
+                        # Keep running until cancelled
+                        while True:
+                            await asyncio.sleep(3600)
                         
                     except Conflict as e:
                         retry_count += 1
