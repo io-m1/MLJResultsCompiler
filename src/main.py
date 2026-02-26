@@ -267,20 +267,82 @@ def start_cm_bot_thread():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
-            async def run_cm_bot():
-                storage = CMStorage()
-                cm_bot = ContentManagerBot(token=token, storage=storage)
-                try:
-                    await cm_bot.initialize()
-                    await cm_bot.start_polling()
-                    stop_event = asyncio.Event()
-                    await stop_event.wait()
-                    await cm_bot.shutdown()
-                except Exception as e:
-                    logger.error(f"MLJCM Bot error: {e}", exc_info=True)
+            async def run_cm_bot_with_retry():
+                from telegram.error import Conflict, NetworkError, TelegramError
+                retry_count = 0
+                max_retries = 30
+                
+                while retry_count < max_retries:
+                    cm_bot = None
+                    try:
+                        storage = CMStorage()
+                        cm_bot = ContentManagerBot(token=token, storage=storage)
+                        await cm_bot.initialize()
+                        
+                        try:
+                            await cm_bot.application.bot.delete_webhook(drop_pending_updates=True)
+                        except:
+                            pass
+                            
+                        logger.info("Starting MLJCM polling...")
+                        await cm_bot.start_polling()
+                        
+                        stop_event = asyncio.Event()
+                        await stop_event.wait()
+                        
+                        await cm_bot.shutdown()
+                        return False
+                        
+                    except Conflict as e:
+                        retry_count += 1
+                        wait_time = 30 if retry_count <= 3 else min(5 ** min(retry_count - 3, 4), 120)
+                        logger.error(f"MLJCM conflict #{retry_count}: {e}")
+                        
+                        if cm_bot:
+                            try:
+                                await cm_bot.shutdown()
+                            except:
+                                pass
+                        await asyncio.sleep(wait_time)
+                        
+                    except (TelegramError, NetworkError) as e:
+                        retry_count += 1
+                        wait_time = min(2 ** retry_count, 60)
+                        logger.warning(f"MLJCM network error #{retry_count}: {e}")
+                        if cm_bot:
+                            try:
+                                await cm_bot.shutdown()
+                            except:
+                                pass
+                        await asyncio.sleep(wait_time)
+                        
+                    except Exception as e:
+                        retry_count += 1
+                        logger.error(f"MLJCM Bot error #{retry_count}: {e}", exc_info=True)
+                        if cm_bot:
+                            try:
+                                await cm_bot.shutdown()
+                            except:
+                                pass
+                        await asyncio.sleep(10)
+                        
+                logger.error("MLJCM max retries exceeded")
+                return True
+                
+            async def run_cm_bot_forever():
+                restart_count = 0
+                while True:
+                    should_restart = await run_cm_bot_with_retry()
+                    if not should_restart:
+                        break
+                    
+                    restart_count += 1
+                    cooldown = min(60 * restart_count, 300)
+                    logger.warning(f"MLJCM restart #{restart_count} - sleeping {cooldown}s")
+                    await asyncio.sleep(cooldown)
                     
             try:
-                loop.run_until_complete(run_cm_bot())
+                loop.run_until_complete(run_cm_bot_forever())
             except Exception as e:
                 logger.error(f"Fatal MLJCM error: {e}", exc_info=True)
             finally:
@@ -650,7 +712,27 @@ def create_app() -> FastAPI:
                 "cm_bot_status": cm_bot_status,
             },
         }
-    
+
+    # Debug logs endpoint
+    @app.get("/logs", tags=["debug"])
+    async def get_logs(lines: int = 100):
+        """Retrieve recent server logs for debugging"""
+        # Read from stdout redirect or a known log file if exists.
+        # Check standard destinations on render or local
+        log_paths = ['server.log', 'telegram_bot.log', 'nohup.out']
+        result = {}
+        
+        for path in log_paths:
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.readlines()
+                        result[path] = "".join(content[-lines:])
+                except Exception as e:
+                    result[path] = f"Error reading: {e}"
+        
+        return {"logs": result if result else "No log files found in root directory."}
+        
     # Import and register routers
     try:
         from src.web_ui_clean import router as web_ui_router
