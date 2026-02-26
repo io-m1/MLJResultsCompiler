@@ -162,119 +162,91 @@ class ParticipationBonusCalculator:
                                       consolidated_data: Dict,
                                       test_numbers: List[int]) -> Dict:
         """
-        Apply participation bonuses to all participants in consolidated data
+        Apply assignment scores and calculate final averages for all participants.
+        
+        Scoring rules:
+        - Missing test scores count as 0 (not ignored)
+        - Final average = (sum of all test scores + assignment score) / (num_tests + 1)
+        - Assignment score for students with 4+ missing tests = 50% (flat)
+        - Assignment score for others = participation-based bonus (existing logic)
+        - Pass mark = 50%
         
         Args:
             consolidated_data (Dict): {email: {name, test_1_score, test_2_score, ...}}
             test_numbers (List[int]): List of test numbers
             
         Returns:
-            Dict: Updated consolidated data with Grade_6_bonus and final_average
+            Dict: Updated consolidated data with assignment_score, final_average, status
         """
-        self.logger.info("=" * 60)
-        self.logger.info("APPLYING PARTICIPATION BONUS SCORES (GRADE 6)")
-        self.logger.info("=" * 60)
-        
-        bonus_stats = {
-            'total_participants': len(consolidated_data),
-            'bonus_awarded': 0,
-            'no_bonus': 0,
-            'average_bonus': 0,
-            'distribution': {}
-        }
-        
-        total_bonus_awarded = 0
+        total_tests = len(test_numbers)
         
         for email, data in consolidated_data.items():
-            # Extract test scores
+            # Extract test scores (None = missing = 0)
             participant_scores = {}
+            completed_count = 0
+            
             for test_num in test_numbers:
                 score_key = f'test_{test_num}_score'
                 score = data.get(score_key)
                 participant_scores[test_num] = score
+                if score is not None and score > 0:
+                    completed_count += 1
             
-            # Calculate bonus
-            bonus_score, bonus_info = self.calculate_bonus_score(
-                participant_email=email,
-                participant_name=data.get('name', 'Unknown'),
-                participant_scores=participant_scores,
-                test_numbers=test_numbers
-            )
+            missing_count = total_tests - completed_count
             
-            # Add bonus to data
-            data['Grade_6_bonus'] = bonus_score
-            data['bonus_info'] = bonus_info
-            
-            # Track stats
-            if bonus_score is not None:
-                bonus_stats['bonus_awarded'] += 1
-                total_bonus_awarded += bonus_score
-                participation_tier = bonus_info['participation_count']
-                if participation_tier not in bonus_stats['distribution']:
-                    bonus_stats['distribution'][participation_tier] = []
-                bonus_stats['distribution'][participation_tier].append({
-                    'name': data['name'],
-                    'bonus': bonus_score,
-                    'method': bonus_info['calculation_method']
-                })
+            # Calculate assignment score
+            if missing_count >= 4:
+                # 4+ tests missing → flat 50% assignment score
+                assignment_score = 50.0
+                assignment_reason = f'{missing_count} tests missing — flat 50% assignment'
             else:
-                bonus_stats['no_bonus'] += 1
-            
-            # Calculate final average including bonus
-            completed_tests = [
-                score for test_num, score in participant_scores.items()
-                if score is not None and score > 0
-            ]
-            
-            if bonus_score is not None:
-                # Include bonus in calculation
-                all_scores = completed_tests + [bonus_score]
-                final_average = sum(all_scores) / len(all_scores)
-                num_for_avg = len(all_scores)
-            else:
-                # No bonus, just average the tests
-                if completed_tests:
-                    final_average = sum(completed_tests) / len(completed_tests)
-                    num_for_avg = len(completed_tests)
+                # Use normal bonus logic for students who did enough tests
+                bonus_score, bonus_info = self.calculate_bonus_score(
+                    participant_email=email,
+                    participant_name=data.get('name', 'Unknown'),
+                    participant_scores=participant_scores,
+                    test_numbers=test_numbers
+                )
+                if bonus_score is not None:
+                    assignment_score = bonus_score
+                    assignment_reason = bonus_info.get('calculation_method', '')
                 else:
-                    final_average = 0
-                    num_for_avg = 0
+                    assignment_score = 50.0
+                    assignment_reason = 'Default assignment score'
+            
+            # Store assignment score (renamed from Grade_6_bonus)
+            data['Grade_6_bonus'] = round(assignment_score, 2)
+            
+            # Calculate final average:
+            # Sum ALL test scores (0 for missing) + assignment score, divided by (total_tests + 1)
+            total_score = 0.0
+            for test_num in test_numbers:
+                score = participant_scores.get(test_num)
+                total_score += score if (score is not None and score > 0) else 0.0
+            
+            total_score += assignment_score
+            final_average = total_score / (total_tests + 1)  # +1 for assignment
             
             # Determine pass/fail (50% is pass mark)
             passed = final_average >= 50
             
-            # Add final metrics to data
             data['final_average'] = round(final_average, 2)
-            data['num_tests_for_average'] = num_for_avg
+            data['num_tests_for_average'] = total_tests + 1
             data['passed'] = passed
             data['status'] = 'PASS' if passed else 'FAIL'
-        
-        # Calculate average bonus awarded
-        if bonus_stats['bonus_awarded'] > 0:
-            bonus_stats['average_bonus'] = round(
-                total_bonus_awarded / bonus_stats['bonus_awarded'], 2
+            
+            logger.debug(
+                f"  {data['name']}: {completed_count}/{total_tests} tests, "
+                f"assignment={assignment_score:.1f}%, avg={final_average:.1f}% → {data['status']}"
             )
         
         # Log summary
-        self.logger.info("\n*** PARTICIPATION BONUS SUMMARY ***")
-        self.logger.info(f"Total participants: {bonus_stats['total_participants']}")
-        self.logger.info(f"Bonuses awarded: {bonus_stats['bonus_awarded']}")
-        self.logger.info(f"No bonus (< 2 tests): {bonus_stats['no_bonus']}")
-        self.logger.info(f"Average bonus awarded: {bonus_stats['average_bonus']}%")
-        
-        self.logger.info("\nBonus Distribution by Participation:")
-        for participation_count in sorted(bonus_stats['distribution'].keys()):
-            recipients = bonus_stats['distribution'][participation_count]
-            self.logger.info(f"\n{participation_count} tests ({len(recipients)} participants):")
-            for recipient in recipients[:3]:  # Show first 3
-                self.logger.info(
-                    f"  • {recipient['name']}: {recipient['bonus']}% "
-                    f"({recipient['method']})"
-                )
-            if len(recipients) > 3:
-                self.logger.info(f"  ... and {len(recipients) - 3} more")
-        
-        self.logger.info("\n" + "=" * 60)
+        pass_count = sum(1 for d in consolidated_data.values() if d.get('status') == 'PASS')
+        fail_count = len(consolidated_data) - pass_count
+        logger.info(
+            f"Scoring complete: {len(consolidated_data)} participants, "
+            f"{pass_count} PASS, {fail_count} FAIL"
+        )
         
         return consolidated_data
 

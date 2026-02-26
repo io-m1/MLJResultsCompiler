@@ -534,11 +534,11 @@ class ExcelProcessor:
                         test_nums.append(test_num)
                 test_nums = sorted(test_nums)
             
-            # Create headers dynamically: Name, Email, Tests..., Grade 6 Bonus, Final Average, Status
+            # Create headers dynamically: Name, Email, Tests..., Assignment Score, Final Average, Status
             headers = (
                 ['Full Name', 'Email'] + 
                 [f'Test {num} Score' for num in test_nums] +
-                ['Grade 6 (Bonus)', 'Final Average (%)', 'Status']
+                ['Assignment Score', 'Final Average (%)', 'Status']
             )
             ws.append(headers)
             
@@ -572,7 +572,7 @@ class ExcelProcessor:
                     cell.fill = get_fill_for_test(test_num)
                     cell.alignment = Alignment(horizontal='center', vertical='center')
                 
-                # Color Grade 6 Bonus column (light green)
+                # Color Assignment Score column (light green)
                 bonus_col = len(test_nums) + 3
                 bonus_cell = ws.cell(row=row_idx, column=bonus_col)
                 bonus_score = consolidated_data[list(consolidated_data.keys())[row_idx - 2]].get('Grade_6_bonus')
