@@ -130,67 +130,47 @@ class ExcelProcessor:
         """
         loaded_count = 0
         
-        logger.info(f"=== LOAD_ALL_TESTS STARTING ===")
-        logger.info(f"Input directory: {self.input_dir}")
-        logger.info(f"Directory exists: {self.input_dir.exists()}")
+        logger.info(f"Loading tests from: {self.input_dir}")
         
         # List ALL files in directory first
         if self.input_dir.exists():
             all_files = list(self.input_dir.iterdir())
-            logger.info(f"ALL FILES IN DIRECTORY ({len(all_files)} total):")
-            for f in sorted(all_files):
-                logger.info(f"  {f.name} (is_file: {f.is_file()})")
+            logger.debug(f"All files in directory ({len(all_files)}): {[f.name for f in all_files]}")
         
         # Find all XLSX files and extract test numbers
         all_xlsx_files = sorted(self.input_dir.glob("*.xlsx"))
         test_nums = set()
         
-        logger.info(f"Scanning {len(all_xlsx_files)} XLSX files in {self.input_dir}")
-        logger.info(f"Files in order: {[f.name for f in all_xlsx_files]}")
+        logger.info(f"Found {len(all_xlsx_files)} XLSX files")
         
-        # DEBUG: Show extraction for each file
-        logger.info("FILE EXTRACTION DEBUG:")
         for f in all_xlsx_files:
             test_num = self._extract_test_number_from_file(f.name)
-            logger.info(f"  '{f.name}' -> Test {test_num}")
+            logger.debug(f"  '{f.name}' -> Test {test_num}")
             if test_num:
                 test_nums.add(test_num)
         
-        logger.info(f"Found test numbers: {sorted(test_nums)}")
+        logger.info(f"Detected test numbers: {sorted(test_nums)}")
         
         if not test_nums:
             logger.warning("No test files found in directory")
             return 0
         
-        # Log all files found in directory
-        logger.info(f"All XLSX files in directory:")
-        for f in all_xlsx_files:
-            extracted_num = self._extract_test_number_from_file(f.name)
-            logger.info(f"  {f.name} -> Test {extracted_num}")
-        
-        # Load ONLY the tests that were actually sent (not fill gaps)
-        logger.info(f"Loading in sorted test order: {sorted(test_nums)}")
+        # Load each test
         for test_num in sorted(test_nums):
             matching_file = self._find_test_file(test_num)
             
             if matching_file:
-                logger.info(f"Loading test {test_num} from: {matching_file.name}")
                 success = self.load_test_file(matching_file, test_num)
                 if success:
                     loaded_count += 1
                     participant_count = len(self.test_data.get(test_num, {}))
-                    logger.info(f"Successfully loaded test {test_num}: {participant_count} participants")
-                    # Log participant emails for debugging
-                    emails = list(self.test_data[test_num].keys())
-                    logger.info(f"  Test {test_num} participant count: {len(emails)}")
-                    logger.info(f"  Test {test_num} emails: {emails[:10]}")
+                    logger.info(f"  Test {test_num}: {participant_count} participants loaded from {matching_file.name}")
                 else:
-                    logger.error(f"Failed to load test {test_num} from {matching_file.name}")
+                    logger.error(f"  Test {test_num}: FAILED to load from {matching_file.name}")
             else:
-                logger.warning(f"Test {test_num} was detected but file not found (should not happen)")
+                logger.warning(f"  Test {test_num}: detected but file not found")
         
-        logger.info(f"Finished loading. Total tests loaded: {loaded_count}")
-        logger.info(f"Final test_data keys: {sorted(self.test_data.keys())}")
+        logger.info(f"Total: {loaded_count} tests loaded successfully")
         return loaded_count
     
     def _find_test_file(self, test_num: int) -> Optional[Path]:
@@ -335,84 +315,40 @@ class ExcelProcessor:
             logger.warning("No test data loaded")
             return {}
         
-        # PREFER Test 1 as base if available, otherwise use first available test
         available_tests = sorted(self.test_data.keys())
         if not available_tests:
             logger.error("No test data available for consolidation")
             return {}
         
-        # Prefer Test 1, fall back to first available
-        if 1 in available_tests:
-            base_test = 1
-            logger.info(f"Using Test 1 as base (preferred)")
-        else:
-            base_test = available_tests[0]
-            logger.info(f"Test 1 not found, using Test {base_test} as base (first available)")
+        # Prefer Test 1 as base, fall back to first available
+        base_test = 1 if 1 in available_tests else available_tests[0]
+        logger.info(f"Consolidating {len(available_tests)} tests (base: Test {base_test})")
         
-        logger.info(f"=== CONSOLIDATION STARTING ===")
-        logger.info(f"test_data.keys() = {list(self.test_data.keys())}")
-        logger.info(f"sorted(test_data.keys()) = {sorted(self.test_data.keys())}")
-        logger.info(f"Available tests found: {available_tests}")
-        logger.info(f"Using Test {base_test} as base for participant list")
-        logger.info(f"All tests to consolidate: {sorted(self.test_data.keys())}")
-        
-        # CRITICAL DEBUG: Check if Test 1 exists
-        if 1 in self.test_data:
-            logger.info(f"✓ Test 1 IS in test_data with {len(self.test_data[1])} participants")
-        else:
-            logger.error(f"✗ Test 1 IS NOT in test_data! Available tests: {list(self.test_data.keys())}")
-        
-        # Log ALL participants in ALL tests BEFORE consolidation with FULL DETAILS
-        logger.info("PRE-CONSOLIDATION PARTICIPANT BREAKDOWN (DETAILED):")
-        for test_num in sorted(self.test_data.keys()):
-            participants = list(self.test_data[test_num].keys())
-            logger.info(f"  Test {test_num}: {len(participants)} participants")
-            if len(participants) > 0:
-                for idx, email in enumerate(participants[:5]):
-                    data = self.test_data[test_num][email]
-                    logger.info(f"    [{idx+1}] {email} | {data['name']} | Score: {data['score']}")
-                if len(participants) > 5:
-                    logger.info(f"    ... and {len(participants) - 5} more")
-            else:
-                logger.warning(f"  Test {test_num} has NO participants!")
+        for test_num in available_tests:
+            logger.debug(f"  Test {test_num}: {len(self.test_data[test_num])} participants")
         
         consolidated = {}
         
-        # Iterate through base test participants (primary source)
-        logger.info(f"Processing base test {base_test} participants...")
-        base_participants = list(self.test_data[base_test].keys())
-        logger.info(f"Base test {base_test} has {len(base_participants)} participants")
-        logger.info(f"Base test {base_test} participant emails: {base_participants}")
-        
+        # Build from base test
         for email, data in self.test_data[base_test].items():
             consolidated[email] = {
                 'name': data['name'],
                 f'test_{base_test}_score': data['score']
             }
             
-            # Add scores from all other tests dynamically by matching email
-            for test_num in sorted(self.test_data.keys()):
+            # Add scores from all other tests
+            for test_num in available_tests:
                 if test_num != base_test:
-                    # Only add if email matches in that test
                     if email in self.test_data[test_num]:
-                        score = self.test_data[test_num][email]['score']
-                        consolidated[email][f'test_{test_num}_score'] = score
+                        consolidated[email][f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
                     else:
-                        # Explicitly set as None if not found
                         consolidated[email][f'test_{test_num}_score'] = None
-        
-        logger.info(f"After base test: {len(consolidated)} participants")
         
         # Sort by name
         consolidated = dict(sorted(consolidated.items(), 
                                   key=lambda x: x[1]['name'].lower()))
         
-        logger.info(f"=== CONSOLIDATION COMPLETE ===")
-        logger.info(f"Final consolidated: {len(consolidated)} participants across {len(self.test_data)} tests")
-        if consolidated:
-            first_email = list(consolidated.keys())[0]
-            first_data = consolidated[first_email]
-            logger.info(f"First participant ({first_email}): {first_data}")
+        logger.info(f"Consolidated: {len(consolidated)} participants across {len(available_tests)} tests")
         return consolidated
     
     def generate_preview_image(self, consolidated_data: Dict, max_rows: int = 12) -> Optional[Path]:

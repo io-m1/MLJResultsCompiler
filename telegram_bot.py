@@ -220,58 +220,49 @@ class TelegramBotHandler:
         """Handle /start command — entry point for ConversationHandler"""
         user_id = update.effective_user.id
         
-        welcome_text = """
-👋 Welcome to MLJ Results Compiler Bot!
-
-I can help you consolidate test results from multiple Excel files.
-
-📋 **How to use:**
-1. Send me 1-5 XLSX test files (Test 1.xlsx, Test 2.xlsx, etc.)
-2. I'll consolidate them by participant
-3. Choose your output format
-4. Get your results instantly!
-
-📤 **Send your files now** or use /help for more info
-        """
+        welcome_text = (
+            "✨ <b>MLJ Results Compiler</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Welcome! I consolidate test results from multiple Excel files "
+            "into one clean, color-coded report — instantly.\n\n"
+            "📋 <b>How it works:</b>\n"
+            "1️⃣ Send me your <code>.xlsx</code> test files\n"
+            "2️⃣ I merge them by participant email\n"
+            "3️⃣ Download your consolidated results\n\n"
+            "📤 <b>Send your first file now to get started!</b>\n\n"
+            "💡 <i>Tip: Name your files Test 1.xlsx, Test 2.xlsx, etc. for best results</i>"
+        )
         
-        await update.message.reply_text(welcome_text)
+        await update.message.reply_text(welcome_text, parse_mode="HTML")
         logger.info(f"User {user_id} started the bot")
         return SELECTING_FORMAT
     
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle /help command"""
-        help_text = """
-🤖 **Bot Commands:**
-
-/start - Show welcome message
-/help - Show this help message
-/cancel - Cancel current operation
-
-📝 **File Requirements:**
-- Format: .xlsx (Excel files)
-- Columns needed: Full Name, Email, Score/Result
-- Files: Test 1.xlsx, Test 2.xlsx, ... Test 5.xlsx
-
-🎨 **Color Coding:**
-- Test 1: White
-- Test 2: Sky Blue
-- Test 3: Yellow
-- Test 4: Lemon Green
-- Test 5: Red
-
-✨ **Supported Output Formats:**
-- Excel (XLSX) - Color-coded spreadsheet
-- PDF - Professional report
-- Word (DOCX) - Formatted document
-
-⚡ **Process:**
-1. Upload your XLSX files
-2. I'll detect all files automatically
-3. Select your output format
-4. Download consolidated results
-        """
+        help_text = (
+            "📖 <b>MLJ Results Compiler — Help</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<b>Commands:</b>\n"
+            "/start — Start fresh\n"
+            "/consolidate — Process uploaded files\n"
+            "/help — This help message\n"
+            "/cancel — Cancel current operation\n\n"
+            "<b>File Requirements:</b>\n"
+            "• Format: <code>.xlsx</code> (Excel)\n"
+            "• Required columns: Full Name, Email, Score\n"
+            "• Naming: Test 1.xlsx, Test 2.xlsx, etc.\n\n"
+            "<b>Output:</b>\n"
+            "📊 Color-coded Excel with:\n"
+            "• All test scores merged by participant\n"
+            "• Participation bonus calculated\n"
+            "• Final average &amp; Pass/Fail status\n\n"
+            "<b>Color Key:</b>\n"
+            "⬜ Test 1 · 🟦 Test 2 · 🟨 Test 3 · 🟩 Test 4 · 🟥 Test 5\n\n"
+            "📤 <b>Send your .xlsx files to get started!</b>"
+        )
         
-        await update.message.reply_text(help_text)
+        await update.effective_message.reply_text(help_text, parse_mode="HTML")
+        return SELECTING_FORMAT
     
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Handle uploaded documents - collect files without immediate processing"""
@@ -283,7 +274,9 @@ I can help you consolidate test results from multiple Excel files.
             
             if not document.file_name.lower().endswith('.xlsx'):
                 await update.message.reply_text(
-                    "❌ Please send Excel (.xlsx) files only!"
+                    "❌ <b>Unsupported file type</b>\n\n"
+                    "Please send <code>.xlsx</code> Excel files only.",
+                    parse_mode="HTML"
                 )
                 return SELECTING_FORMAT
             
@@ -296,7 +289,7 @@ I can help you consolidate test results from multiple Excel files.
                 file = await context.bot.get_file(document.file_id)
                 file_path = temp_dir / document.file_name
                 await file.download_to_drive(file_path)
-                logger.info(f"USER {user_id}: File downloaded successfully to {file_path}")
+                logger.info(f"USER {user_id}: File downloaded to {file_path}")
             except Exception as e:
                 logger.error(f"USER {user_id}: Failed to download file: {e}", exc_info=True)
                 await update.message.reply_text(
@@ -321,13 +314,13 @@ I can help you consolidate test results from multiple Excel files.
             
             if test_num is None:
                 await update.message.reply_text(
-                    "⚠️ **Could not detect test number from this filename**\n\n"
-                    "📝 **Accepted formats:**\n"
-                    "✅ 'Test 1.xlsx', 'test 1.xlsx', 'Test1.xlsx'\n"
-                    "✅ '1.xlsx', 'result_1.xlsx', 'exam(1).xlsx'\n\n"
-                    "🔹 The file must contain at least one number (1-9).\n"
-                    "Please rename and try again.",
-                    parse_mode="Markdown"
+                    "⚠️ <b>Could not detect test number</b>\n\n"
+                    "Please name your file with a number, e.g.:\n"
+                    "• <code>Test 1.xlsx</code>\n"
+                    "• <code>Test 2.xlsx</code>\n"
+                    "• <code>1.xlsx</code>\n\n"
+                    "Rename and resend the file.",
+                    parse_mode="HTML"
                 )
                 return SELECTING_FORMAT
             
@@ -342,26 +335,19 @@ I can help you consolidate test results from multiple Excel files.
                 )
                 return SELECTING_FORMAT
             
-            # Send status update
-            try:
-                status_msg = session_manager.format_status_message(user_id)
-                await update.message.reply_text(status_msg, parse_mode="Markdown")
-                logger.info(f"USER {user_id}: Sent status message")
-            except Exception as e:
-                logger.error(f"USER {user_id}: Error sending status: {e}", exc_info=True)
+            # Count total files in session
+            session = session_manager.get_session(user_id)
+            uploaded = session.get('files', {})
+            file_count = len(uploaded)
+            file_list = ', '.join(f'Test {n}' for n in sorted(uploaded.keys()))
             
-            # Agent reasoning: What's next?
-            try:
-                next_action = WorkflowAgent.get_next_action(session_manager.get_session(user_id))
-                suggestion = WorkflowAgent.format_suggestion(next_action)
-                
-                await update.message.reply_text(
-                    f"ℹ️ {suggestion}\n\n"
-                    f"🔹 Send more files or use /consolidate to process"
-                )
-                logger.info(f"USER {user_id}: Sent next action suggestion")
-            except Exception as e:
-                logger.error(f"USER {user_id}: Error sending suggestion: {e}", exc_info=True)
+            # Send clean upload confirmation
+            await update.message.reply_text(
+                f"✅ <b>Test {test_num}</b> received!\n\n"
+                f"📁 Files uploaded: <b>{file_count}</b> ({file_list})\n\n"
+                f"{'📤 Send more files or tap /consolidate when ready.' if file_count < 5 else '🎯 You have 5 files! Tap /consolidate to process.'}",
+                parse_mode="HTML"
+            )
             
             return SELECTING_FORMAT
             
@@ -369,8 +355,9 @@ I can help you consolidate test results from multiple Excel files.
             logger.error(f"USER {user_id}: Unexpected error in handle_document: {e}", exc_info=True)
             try:
                 await update.message.reply_text(
-                    f"❌ Unexpected error: {str(e)}\n\n"
-                    f"Please try again or contact support."
+                    f"❌ Something went wrong processing your file.\n"
+                    f"Please try sending it again.",
+                    parse_mode="HTML"
                 )
             except Exception as reply_error:
                 logger.error(f"USER {user_id}: Failed to send error message: {reply_error}")
@@ -405,23 +392,19 @@ I can help you consolidate test results from multiple Excel files.
         return None
     
     async def show_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Show format selection buttons"""
+        """Show format selection buttons — Excel only (PDF/DOCX not yet available)"""
         keyboard = [
             [
-                InlineKeyboardButton("📊 Excel (XLSX)", callback_data='format_xlsx'),
-                InlineKeyboardButton("📄 PDF Report", callback_data='format_pdf'),
+                InlineKeyboardButton("📊 Download Excel", callback_data='format_xlsx'),
             ],
             [
-                InlineKeyboardButton("📝 Word (DOCX)", callback_data='format_docx'),
-            ],
-            [
-                InlineKeyboardButton("❌ Cancel", callback_data='cancel'),
+                InlineKeyboardButton("❌ Cancel", callback_data='format_cancel'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
-            "📋 Choose your output format:",
+        await update.effective_message.reply_text(
+            "📋 Ready to consolidate! Choose your output:",
             reply_markup=reply_markup
         )
         
@@ -556,25 +539,26 @@ I can help you consolidate test results from multiple Excel files.
                 if full_image_path and full_image_path.exists():
                     try:
                         await query.delete_message()
-                        await context.bot.send_photo(
-                            chat_id=update.effective_chat.id,
-                            photo=open(full_image_path, 'rb'),
-                            caption="📊 **FULL CONSOLIDATION DATA** (all participants shown)\n\n_Use Back button to return to quick preview_",
-                            parse_mode="Markdown"
-                        )
+                        with open(full_image_path, 'rb') as photo_file:
+                            await context.bot.send_photo(
+                                chat_id=update.effective_chat.id,
+                                photo=photo_file,
+                                caption="📊 <b>Full data preview</b> — all participants shown",
+                                parse_mode="HTML"
+                            )
                     except Exception as e:
                         logger.error(f"Error sending full image: {str(e)}")
                         full_preview = self._generate_preview(consolidated_data, max_rows=999, validation_report=validation_report)
-                        await query.edit_message_text(full_preview, parse_mode="Markdown")
+                        await query.edit_message_text(full_preview)
                     return CONFIRMING_PREVIEW
             
             # Fallback to text
             full_preview = self._generate_preview(consolidated_data, max_rows=999, validation_report=validation_report)
-            await query.edit_message_text(full_preview, parse_mode="Markdown")
+            await query.edit_message_text(full_preview)
             return CONFIRMING_PREVIEW
         
         elif action == 'confirm':
-            # User confirmed, show format selection
+            # User confirmed, show format selection (Excel only — PDF/DOCX not implemented)
             try:
                 await query.delete_message()
             except:
@@ -582,11 +566,7 @@ I can help you consolidate test results from multiple Excel files.
             
             keyboard = [
                 [
-                    InlineKeyboardButton("📊 Excel (XLSX)", callback_data='format_xlsx'),
-                    InlineKeyboardButton("📄 PDF Report", callback_data='format_pdf'),
-                ],
-                [
-                    InlineKeyboardButton("📝 Word (DOCX)", callback_data='format_docx'),
+                    InlineKeyboardButton("📊 Download Excel", callback_data='format_xlsx'),
                 ],
                 [
                     InlineKeyboardButton("❌ Cancel", callback_data='format_cancel'),
@@ -619,18 +599,17 @@ I can help you consolidate test results from multiple Excel files.
             )
             return ConversationHandler.END
         
-        format_choice = query.data.split('_')[1]  # Extract 'xlsx', 'pdf', or 'docx'
-        
-        if format_choice == 'cancel':
-            await query.edit_message_text("❌ Operation cancelled")
+        # Safe callback data parsing (BUG 2 fix)
+        if query.data == 'format_cancel' or query.data == 'cancel':
+            await query.edit_message_text("❌ Operation cancelled. Use /start to begin again.")
             session_manager.clear_session(user_id)
             return ConversationHandler.END
         
+        format_choice = query.data.replace('format_', '')  # Extract 'xlsx', 'pdf', or 'docx'
+        
         try:
             await query.edit_message_text(
-                "⏳ Consolidating files...\n"
-                "Merging all tests...",
-                parse_mode="Markdown"
+                "⏳ Consolidating your files... please wait."
             )
             
             # Create processor with session files
@@ -713,21 +692,21 @@ I can help you consolidate test results from multiple Excel files.
                 warnings_text = ""
                 if validation_report:
                     if validation_report.get('missing_participants'):
-                        warnings_text += f"⚠️ **MISSING SCORES:** {len(validation_report['missing_participants'])} participant(s) missing from some tests\n"
+                        warnings_text += f"\n⚠️ Missing scores: {len(validation_report['missing_participants'])} participant(s)"
                     if validation_report.get('name_mismatches'):
-                        warnings_text += f"🔴 **NAME MISMATCH:** {len(validation_report['name_mismatches'])} name conflict(s)\n"
+                        warnings_text += f"\n🔴 Name conflicts: {len(validation_report['name_mismatches'])}"
                     if validation_report.get('duplicate_scores'):
-                        warnings_text += f"❓ **IDENTICAL SCORES:** {len(validation_report['duplicate_scores'])} participant(s)\n"
+                        warnings_text += f"\n❓ Identical scores: {len(validation_report['duplicate_scores'])} participant(s)"
                 
-                caption = "📊 **VISUAL CONSOLIDATION PREVIEW**\n"
+                caption = f"📊 Consolidation Preview \u2014 {len(consolidated_data)} participants"
                 if warnings_text:
-                    caption += "\n" + warnings_text + "\n"
-                caption += "_Click buttons below to proceed or see full data_"
+                    caption += warnings_text
+                caption += "\n\nTap a button below to continue."
                 
                 keyboard = [
                     [
                         InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
-                        InlineKeyboardButton("❓ Show Full Data", callback_data='preview_full'),
+                        InlineKeyboardButton("🔍 Full Data", callback_data='preview_full'),
                     ],
                     [
                         InlineKeyboardButton("❌ Cancel", callback_data='preview_cancel'),
@@ -735,14 +714,13 @@ I can help you consolidate test results from multiple Excel files.
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
-                # Send photo with buttons (don't delete the text message, just send new photo)
+                # Send photo with buttons
                 with open(preview_image_path, 'rb') as photo_file:
                     await context.bot.send_photo(
                         chat_id=update.effective_chat.id,
                         photo=photo_file,
                         caption=caption,
-                        reply_markup=reply_markup,
-                        parse_mode="Markdown"
+                        reply_markup=reply_markup
                     )
                 
                 # Try to delete the old message if possible
@@ -758,7 +736,7 @@ I can help you consolidate test results from multiple Excel files.
                 keyboard = [
                     [
                         InlineKeyboardButton("✅ Looks Good!", callback_data='preview_confirm'),
-                        InlineKeyboardButton("❓ Show Full Data", callback_data='preview_full'),
+                        InlineKeyboardButton("🔍 Full Data", callback_data='preview_full'),
                     ],
                     [
                         InlineKeyboardButton("❌ Cancel", callback_data='preview_cancel'),
@@ -768,8 +746,7 @@ I can help you consolidate test results from multiple Excel files.
                 
                 await query.edit_message_text(
                     preview,
-                    reply_markup=reply_markup,
-                    parse_mode="Markdown"
+                    reply_markup=reply_markup
                 )
             
             return CONFIRMING_PREVIEW
@@ -788,11 +765,13 @@ I can help you consolidate test results from multiple Excel files.
         user_id = update.effective_user.id
         await query.answer()
         
-        format_choice = query.data.split('_')[1]  # Extract 'xlsx', 'pdf', or 'docx'
-        
-        if format_choice == 'cancel':
-            await query.edit_message_text("❌ Operation cancelled")
+        # Safe callback data parsing (BUG 2 fix)
+        if query.data == 'format_cancel' or query.data == 'cancel':
+            await query.edit_message_text("❌ Operation cancelled. Use /start to begin again.")
+            self.cleanup_session(user_id)
             return ConversationHandler.END
+        
+        format_choice = query.data.replace('format_', '')  # Extract 'xlsx'
         
         try:
             consolidated_data = context.user_data.get('consolidated_data', {})
@@ -800,32 +779,38 @@ I can help you consolidate test results from multiple Excel files.
             output_dir = Path(context.user_data.get('output_dir', tempfile.gettempdir()))
             
             if not consolidated_data or not processor:
-                await query.edit_message_text("❌ Session expired. Please start over.")
+                await query.edit_message_text("❌ Session expired. Please use /start to begin again.")
                 return ConversationHandler.END
             
-            await query.edit_message_text(
-                "⏳ Generating file...\n"
-                f"Converting to {format_choice.upper()}...",
-                parse_mode="Markdown"
-            )
+            # Only Excel is currently supported
+            if format_choice not in ('xlsx',):
+                await query.edit_message_text(
+                    f"⚠️ {format_choice.upper()} export is not yet available.\n"
+                    f"Generating Excel instead..."
+                )
+                format_choice = 'xlsx'
             
-            # Generate file in selected format
-            if format_choice == 'xlsx':
-                output_file = output_dir / 'Consolidated_Results.xlsx'
-                processor.save_consolidated_file(consolidated_data, output_file.name)
-            elif format_choice == 'pdf':
-                output_file = output_dir / 'Consolidated_Results.pdf'
-                processor.save_as_pdf(consolidated_data, output_file.name)
-            elif format_choice == 'docx':
-                output_file = output_dir / 'Consolidated_Results.docx'
-                processor.save_as_docx(consolidated_data, output_file.name)
+            await query.edit_message_text("⏳ Generating your report...")
             
-            # Send file back
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"✅ File ready!\n📊 {len(consolidated_data)} participants\n📝 Format: {format_choice.upper()}"
-            )
+            # Generate Excel file
+            output_file = output_dir / 'Consolidated_Results.xlsx'
+            success = processor.save_consolidated_file(consolidated_data, output_file.name)
             
+            if not success or not output_file.exists():
+                await query.edit_message_text(
+                    "❌ Failed to generate the file. Please try again with /start."
+                )
+                self.cleanup_session(user_id)
+                return ConversationHandler.END
+            
+            # Count stats for the celebration message
+            test_nums = set()
+            for data in consolidated_data.values():
+                for key in data.keys():
+                    if key.startswith('test_') and key.endswith('_score'):
+                        test_nums.add(int(key.split('_')[1]))
+            
+            # Send the file
             with open(output_file, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
@@ -833,20 +818,30 @@ I can help you consolidate test results from multiple Excel files.
                     filename=output_file.name
                 )
             
-            logger.info(f"User {user_id}: Sent consolidated results ({format_choice})")
-            
+            # UX 4: Success celebration
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="✨ Done! Upload more files or use /help for assistance."
+                text=(
+                    "✅ <b>Report delivered!</b>\n"
+                    "━━━━━━━━━━━━━━━━━━\n\n"
+                    f"👥 <b>{len(consolidated_data)}</b> participants\n"
+                    f"📝 <b>{len(test_nums)}</b> tests merged ({', '.join(f'Test {t}' for t in sorted(test_nums))})\n"
+                    f"📊 Format: Excel (color-coded)\n\n"
+                    f"🔄 Send more files anytime or tap /start to begin a new session."
+                ),
+                parse_mode="HTML"
             )
+            
+            logger.info(f"User {user_id}: Delivered consolidated results ({len(consolidated_data)} participants, {len(test_nums)} tests)")
             
             self.cleanup_session(user_id)
             return ConversationHandler.END
             
         except Exception as e:
-            logger.error(f"Error generating file for user {user_id}: {str(e)}")
+            logger.error(f"Error generating file for user {user_id}: {str(e)}", exc_info=True)
             await query.edit_message_text(
-                f"❌ Error: {str(e)}\n\nPlease try again or contact support."
+                "❌ Something went wrong generating your report.\n"
+                "Please try again with /start."
             )
             self.cleanup_session(user_id)
             return ConversationHandler.END
@@ -874,7 +869,10 @@ I can help you consolidate test results from multiple Excel files.
         user_id = update.effective_user.id
         self.cleanup_session(user_id)
         
-        await update.message.reply_text("❌ Operation cancelled. Start over with /start")
+        await update.effective_message.reply_text(
+            "❌ Session cancelled.\n\n"
+            "Tap /start to begin a new session."
+        )
         return ConversationHandler.END
     
     @staticmethod
@@ -896,6 +894,7 @@ def build_application(token: str) -> Application:
             SELECTING_FORMAT: [
                 MessageHandler(filters.Document.FileExtension("xlsx"), handler.handle_document),
                 CallbackQueryHandler(handler.format_selected),
+                CommandHandler("consolidate", handler.consolidate_command),
             ],
             CONFIRMING_PREVIEW: [
                 CallbackQueryHandler(handler.handle_preview_action),
@@ -906,16 +905,18 @@ def build_application(token: str) -> Application:
         },
         fallbacks=[
             CommandHandler("cancel", handler.cancel),
+            CommandHandler("start", handler.start),
+            CommandHandler("help", handler.help_command),
         ],
     )
 
     application.add_handler(conv_handler)
-    application.add_handler(CommandHandler("consolidate", handler.consolidate_command))
+    
+    # Standalone handlers for when user is NOT in a conversation
     application.add_handler(CommandHandler("help", handler.help_command))
     application.add_handler(CommandHandler("start", handler.start))
     
     # Add text message handler for conversational mode (outside conversation flow)
-    # This handles natural language queries when not in active conversation
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handler.handle_message)
     )
