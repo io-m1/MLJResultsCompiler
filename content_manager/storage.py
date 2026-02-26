@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, Float, D
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.pool import NullPool
 
-from .models import Channel, ContentPost, Schedule, ChannelAdmin
+from .models import Channel, ContentPost, Schedule, ChannelAdmin, BotPersona
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,27 @@ class DBChannelAdmin(Base):
             added_at=self.added_at
         )
 
+class DBBotPersona(Base):
+    __tablename__ = 'bot_personas'
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(Integer, ForeignKey('channels.id', ondelete='CASCADE'), unique=True, index=True)
+    bot_name = Column(String, nullable=False, default="MLJCM Bot")
+    greeting = Column(Text, default="")
+    sign_off = Column(Text, default="")
+    created_by = Column(BigInteger, nullable=False)
+
+    channel = relationship("DBChannel", back_populates="persona")
+
+    def to_dataclass(self) -> BotPersona:
+        return BotPersona(
+            id=self.id,
+            channel_id=self.channel_id,
+            bot_name=self.bot_name or "MLJCM Bot",
+            greeting=self.greeting or "",
+            sign_off=self.sign_off or "",
+            created_by=self.created_by
+        )
+
 class DBChannel(Base):
     __tablename__ = 'channels'
     id = Column(Integer, primary_key=True)
@@ -46,6 +67,7 @@ class DBChannel(Base):
     
     schedules = relationship("DBSchedule", back_populates="channel", cascade="all, delete-orphan")
     admins = relationship("DBChannelAdmin", back_populates="channel", cascade="all, delete-orphan")
+    persona = relationship("DBBotPersona", back_populates="channel", uselist=False, cascade="all, delete-orphan")
 
     def to_dataclass(self) -> Channel:
         return Channel(
@@ -181,12 +203,12 @@ class CMStorage:
             query = session.query(DBChannel).join(DBChannelAdmin).filter(DBChannelAdmin.user_id == user_id)
             return [c.to_dataclass() for c in query.all()]
             
-    def update_linked_chat(self, channel_id: int, linked_chat_id: Optional[int], pos_to_linked: bool) -> bool:
+    def update_linked_chat(self, channel_id: int, linked_chat_id: Optional[int], post_to_linked: bool) -> bool:
         with self.get_session() as session:
             db_channel = session.query(DBChannel).filter(DBChannel.id == channel_id).first()
             if db_channel:
                 db_channel.linked_chat_id = linked_chat_id
-                db_channel.post_to_linked = pos_to_linked
+                db_channel.post_to_linked = post_to_linked
                 return True
             return False
 
@@ -231,6 +253,38 @@ class CMStorage:
             db_content = session.query(DBContentPost).filter(DBContentPost.id == content_id).first()
             if db_content:
                 session.delete(db_content)
+                return True
+            return False
+
+    def set_persona(self, channel_id: int, bot_name: str, greeting: str, sign_off: str, created_by: int) -> BotPersona:
+        with self.get_session() as session:
+            db_persona = session.query(DBBotPersona).filter(DBBotPersona.channel_id == channel_id).first()
+            if db_persona:
+                db_persona.bot_name = bot_name
+                db_persona.greeting = greeting
+                db_persona.sign_off = sign_off
+            else:
+                db_persona = DBBotPersona(
+                    channel_id=channel_id,
+                    bot_name=bot_name,
+                    greeting=greeting,
+                    sign_off=sign_off,
+                    created_by=created_by
+                )
+                session.add(db_persona)
+            session.flush()
+            return db_persona.to_dataclass()
+
+    def get_persona(self, channel_id: int) -> Optional[BotPersona]:
+        with self.get_session() as session:
+            db_persona = session.query(DBBotPersona).filter(DBBotPersona.channel_id == channel_id).first()
+            return db_persona.to_dataclass() if db_persona else None
+
+    def delete_persona(self, channel_id: int) -> bool:
+        with self.get_session() as session:
+            db_persona = session.query(DBBotPersona).filter(DBBotPersona.channel_id == channel_id).first()
+            if db_persona:
+                session.delete(db_persona)
                 return True
             return False
 
@@ -288,3 +342,39 @@ class CMStorage:
                 session.delete(db_schedule)
                 return True
             return False
+
+    def get_dashboard_stats(self, user_id: int) -> Dict[str, Any]:
+        with self.get_session() as session:
+            content_count = session.query(DBContentPost).filter(DBContentPost.created_by == user_id).count()
+            recent_content = session.query(DBContentPost).filter(
+                DBContentPost.created_by == user_id
+            ).order_by(DBContentPost.created_at.desc()).limit(5).all()
+            
+            channels = session.query(DBChannel).join(DBChannelAdmin).filter(
+                DBChannelAdmin.user_id == user_id
+            ).all()
+            
+            total_schedules = session.query(DBSchedule).join(DBContentPost).filter(
+                DBContentPost.created_by == user_id
+            ).count()
+            active_schedules = session.query(DBSchedule).join(DBContentPost).filter(
+                DBContentPost.created_by == user_id, DBSchedule.is_active == True
+            ).count()
+
+            channel_personas = []
+            for ch in channels:
+                persona = session.query(DBBotPersona).filter(DBBotPersona.channel_id == ch.id).first()
+                channel_personas.append({
+                    "channel": ch.to_dataclass(),
+                    "persona": persona.to_dataclass() if persona else None
+                })
+            
+            return {
+                "content_count": content_count,
+                "recent_content": [c.to_dataclass() for c in recent_content],
+                "channel_count": len(channels),
+                "channels": channel_personas,
+                "total_schedules": total_schedules,
+                "active_schedules": active_schedules,
+                "paused_schedules": total_schedules - active_schedules
+            }

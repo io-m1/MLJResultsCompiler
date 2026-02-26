@@ -76,21 +76,38 @@ class CMScheduler:
             logger.error(f"Cannot post schedule {schedule_id}: channel {channel_id} not found")
             return
 
+        persona = self.storage.get_persona(channel_id)
+        final_text = text
+        if persona:
+            if persona.greeting:
+                final_text = f"{persona.greeting}\n\n{final_text}"
+            if persona.sign_off:
+                final_text = f"{final_text}\n\n{persona.sign_off}"
+
         try:
             try:
-                msg = await self.bot.send_message(chat_id=channel.chat_id, text=text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                msg = await self.bot.send_message(
+                    chat_id=channel.chat_id, text=final_text,
+                    parse_mode=ParseMode.HTML, disable_web_page_preview=True
+                )
             except Exception:
-                msg = await self.bot.send_message(chat_id=channel.chat_id, text=text, disable_web_page_preview=True)
+                msg = await self.bot.send_message(
+                    chat_id=channel.chat_id, text=final_text,
+                    disable_web_page_preview=True
+                )
                 
-            logger.info(f"Successfully posted schedule {schedule_id} to chat {channel.chat_id}")
+            logger.info(f"Posted schedule {schedule_id} to {channel.chat_id}")
             
             if channel.linked_chat_id and channel.post_to_linked:
                 try:
-                    await self.bot.forward_message(chat_id=channel.linked_chat_id, from_chat_id=channel.chat_id, message_id=msg.message_id)
-                    logger.info(f"Successfully forwarded schedule {schedule_id} to linked chat {channel.linked_chat_id}")
+                    await self.bot.forward_message(
+                        chat_id=channel.linked_chat_id,
+                        from_chat_id=channel.chat_id,
+                        message_id=msg.message_id
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to forward schedule {schedule_id} to linked chat {channel.linked_chat_id}: {e}")
+                    logger.error(f"Failed to forward schedule {schedule_id} to linked chat: {e}")
             
             self.storage.update_last_posted(schedule_id, now)
         except Exception as e:
-            logger.error(f"Failed to post schedule {schedule_id} to chat {channel.chat_id}: {e}")
+            logger.error(f"Failed to post schedule {schedule_id}: {e}")

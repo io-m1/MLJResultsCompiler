@@ -22,6 +22,15 @@ class ChannelAdmin:
     added_at: datetime
 
 @dataclass
+class BotPersona:
+    id: int
+    channel_id: int
+    bot_name: str
+    greeting: str
+    sign_off: str
+    created_by: int
+
+@dataclass
 class ContentPost:
     id: int
     title: str
