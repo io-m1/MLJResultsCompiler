@@ -19,7 +19,7 @@ class DBChannelAdmin(Base):
     id = Column(Integer, primary_key=True)
     channel_id = Column(Integer, ForeignKey('channels.id', ondelete='CASCADE'), index=True)
     user_id = Column(BigInteger, index=True)
-    role = Column(String)  # 'owner', 'admin'
+    role = Column(String)
     added_at = Column(DateTime, default=datetime.utcnow)
     
     channel = relationship("DBChannel", back_populates="admins")
@@ -88,7 +88,7 @@ class DBSchedule(Base):
     content_id = Column(Integer, ForeignKey('content_posts.id'), nullable=False)
     channel_id = Column(Integer, ForeignKey('channels.id'), nullable=False)
     interval_hours = Column(Float, nullable=False)
-    start_time = Column(String(5))  # Format: "HH:MM"
+    start_time = Column(String(5))
     timezone = Column(String(50), default="Africa/Lagos")
     is_active = Column(Boolean, default=True)
     repeat_until = Column(DateTime, nullable=True)
@@ -114,40 +114,28 @@ class DBSchedule(Base):
 
 
 class CMStorage:
-    """Persistent storage manager for MLJ Content Manager using SQLAlchemy"""
     
     def __init__(self, db_url: Optional[str] = None):
-        """
-        Initialize the database connection.
-        If DATABASE_URL is not provided, falls back to a local SQLite file.
-        """
         if not db_url:
             db_url = os.environ.get('DATABASE_URL')
             
         if not db_url:
-            # Fallback to local SQLite DB
             db_path = os.path.join(os.getcwd(), 'data', 'mljcm.db')
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
             db_url = f"sqlite:///{db_path}"
             logger.info(f"MLJCM using local SQLite storage: {db_path}")
-            # SQLite specific engine
             self.engine = create_engine(db_url, connect_args={"check_same_thread": False})
         else:
-            # PostgreSQL URL fixing for SQLAlchemy (often provided as postgres:// but needs postgresql://)
             if db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql://", 1)
             logger.info("MLJCM using external PostgreSQL database")
-            # PostgreSQL specific engine (use NullPool for serverless/Render to avoid dropped connections)
             self.engine = create_engine(db_url, poolclass=NullPool)
             
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        
-        # Create tables
         Base.metadata.create_all(bind=self.engine)
         
     @contextmanager
     def get_session(self):
-        """Provide a transactional scope around a series of operations."""
         session = self.SessionLocal()
         try:
             yield session
@@ -158,16 +146,12 @@ class CMStorage:
         finally:
             session.close()
 
-    # --- Channels ---
-    
     def add_channel(self, chat_id: int, title: str, chat_type: str, added_by: int) -> tuple[Optional[Channel], bool]:
-        """Returns (Channel, is_new). If already exists, returns (existing, False) to prevent duplicate addition."""
         with self.get_session() as session:
             db_channel = session.query(DBChannel).filter(DBChannel.chat_id == chat_id).first()
             if db_channel:
                 return db_channel.to_dataclass(), False
             
-            # Create new
             db_channel = DBChannel(
                 chat_id=chat_id,
                 title=title,
@@ -177,7 +161,6 @@ class CMStorage:
             session.add(db_channel)
             session.flush()
             
-            # Assign owner
             admin = DBChannelAdmin(
                 channel_id=db_channel.id,
                 user_id=added_by,
@@ -206,8 +189,6 @@ class CMStorage:
                 db_channel.post_to_linked = pos_to_linked
                 return True
             return False
-            
-    # --- Content ---
 
     def create_content(self, title: str, body: str, created_by: int) -> ContentPost:
         with self.get_session() as session:
@@ -253,8 +234,6 @@ class CMStorage:
                 return True
             return False
 
-    # --- Schedules ---
-
     def create_schedule(self, content_id: int, channel_id: int, interval_hours: float, 
                         start_time: str, timezone: str, repeat_until: Optional[datetime] = None) -> Schedule:
         with self.get_session() as session:
@@ -283,7 +262,6 @@ class CMStorage:
             
     def get_schedule(self, schedule_id: int) -> Optional[Schedule]:
         with self.get_session() as session:
-            # No user filter here since this is often called internally by the scheduler logic
             db_schedule = session.query(DBSchedule).filter(DBSchedule.id == schedule_id).first()
             return db_schedule.to_dataclass() if db_schedule else None
 

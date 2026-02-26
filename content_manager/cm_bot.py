@@ -17,27 +17,21 @@ from .scheduler import CMScheduler
 
 logger = logging.getLogger(__name__)
 
-# State for adding new content
 (WAITING_FOR_TITLE, WAITING_FOR_BODY) = range(2)
 
 class ContentManagerBot:
-    """Telegram Bot handler for MLJCM Content Manager using Inline Keyboard Navigation"""
     
     def __init__(self, token: str, storage: CMStorage):
         self.token = token
         self.storage = storage
-        # Disable built-in JobQueue: Python 3.13 breaks weakref.ref(Application).
-        # We use APScheduler (CMScheduler) instead.
         self.application = Application.builder().token(token).job_queue(None).build()
         self.scheduler = CMScheduler(self.application.bot, self.storage)
         self._setup_handlers()
 
     def _setup_handlers(self):
-        # Basic commands
         self.application.add_handler(CommandHandler("start", self.cmd_start))
         self.application.add_handler(CommandHandler("help", self.cmd_help))
         
-        # New Content Conversation
         conv_content = ConversationHandler(
             entry_points=[CallbackQueryHandler(self.start_add_content, pattern="^new_content$")],
             states={
@@ -51,32 +45,24 @@ class ContentManagerBot:
         )
         self.application.add_handler(conv_content)
         
-        # Navigation Callbacks
         self.application.add_handler(CallbackQueryHandler(self.show_main_menu, pattern="^main_menu$"))
         
-        # Bucket Navigation
         self.application.add_handler(CallbackQueryHandler(self.show_bucket, pattern="^bucket_list$"))
         self.application.add_handler(CallbackQueryHandler(self.view_content, pattern="^view_content_"))
         self.application.add_handler(CallbackQueryHandler(self.delete_content, pattern="^del_content_"))
         
-        # Scheduling Navigation
         self.application.add_handler(CallbackQueryHandler(self.start_schedule, pattern="^sched_start_"))
         self.application.add_handler(CallbackQueryHandler(self.select_channel, pattern="^sched_chan_"))
         self.application.add_handler(CallbackQueryHandler(self.finalize_schedule, pattern="^sched_int_"))
         
-        # Manage Active Schedules
         self.application.add_handler(CallbackQueryHandler(self.show_schedules, pattern="^schedules_list$"))
         self.application.add_handler(CallbackQueryHandler(self.toggle_schedule, pattern="^sched_toggle_"))
         self.application.add_handler(CallbackQueryHandler(self.delete_schedule, pattern="^sched_del_"))
         
-        # Channels Navigation
         self.application.add_handler(CallbackQueryHandler(self.show_channels, pattern="^channels_list$"))
         self.application.add_handler(CallbackQueryHandler(self.toggle_linked_group, pattern="^toggle_linked_"))
         
-        # Catch-all for when bot is added to a channel (chat member updates)
         self.application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, self.handle_new_chat_members))
-
-    # --- Lifecycle ---
 
     async def initialize(self):
         await self.application.initialize()
@@ -93,8 +79,6 @@ class ContentManagerBot:
         await self.application.stop()
         await self.application.shutdown()
 
-    # --- UI Components ---
-
     def get_main_menu_keyboard(self):
         keyboard = [
             [InlineKeyboardButton("📝 Document Bucket (Content)", callback_data="bucket_list")],
@@ -102,8 +86,6 @@ class ContentManagerBot:
             [InlineKeyboardButton("📻 Registered Channels", callback_data="channels_list")]
         ]
         return InlineKeyboardMarkup(keyboard)
-
-    # --- Entry points ---
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (
@@ -125,8 +107,6 @@ class ContentManagerBot:
         await query.answer()
         text = "🎛 <b>Main Menu</b>\n\nSelect an operation:"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=self.get_main_menu_keyboard())
-
-    # --- Document Bucket (Content Management) ---
 
     async def show_bucket(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -184,8 +164,6 @@ class ContentManagerBot:
         
         await self.show_bucket(update, context)
 
-    # --- New Content Conversation ---
-    
     async def start_add_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         query = update.callback_query
         await query.answer()
@@ -245,8 +223,6 @@ class ContentManagerBot:
         )
         return ConversationHandler.END
 
-    # --- Inline Scheduling Flow ---
-
     async def start_schedule(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
@@ -263,7 +239,6 @@ class ContentManagerBot:
             
         keyboard = []
         for c in channels:
-            # Pass content_id and channel_id
             keyboard.append([InlineKeyboardButton(c.title, callback_data=f"sched_chan_{content_id}_{c.id}")])
             
         keyboard.append([InlineKeyboardButton("🔙 Cancel", callback_data=f"view_content_{content_id}")])
@@ -278,7 +253,6 @@ class ContentManagerBot:
         content_id = int(parts[2])
         channel_id = int(parts[3])
         
-        # Predefined intervals to keep it inline
         keyboard = [
             [
                 InlineKeyboardButton("1 Hour", callback_data=f"sched_int_{content_id}_{channel_id}_1"),
@@ -326,8 +300,6 @@ class ContentManagerBot:
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]])
         )
-
-    # --- Manage Schedules ---
 
     async def show_schedules(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -395,8 +367,6 @@ class ContentManagerBot:
         
         await self.show_schedules(update, context)
 
-    # --- Channels ---
-
     async def show_channels(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
@@ -436,14 +406,12 @@ class ContentManagerBot:
         await self.show_channels(update, context)
 
     async def handle_new_chat_members(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Automatically detect when bot is added to a channel/group"""
         bot_id = self.application.bot.id
         for member in update.message.new_chat_members:
             if member.id == bot_id:
                 chat = update.effective_chat
                 user_id = update.message.from_user.id
                 
-                # Register channel and check if it already exists
                 channel, is_new = self.storage.add_channel(
                     chat_id=chat.id,
                     title=chat.title,
@@ -453,7 +421,6 @@ class ContentManagerBot:
                 
                 logger.info(f"MLJCM Bot added to {chat.type}: {chat.title} ({chat.id}) - New: {is_new}")
                 
-                # Immediately check for linked groups
                 try:
                     full_chat = await context.bot.get_chat(chat.id)
                     if full_chat.linked_chat_id:
@@ -463,7 +430,6 @@ class ContentManagerBot:
                     logger.warning(f"Could not check linked chat for {chat.title}: {e}")
                 
                 if not is_new:
-                    # Bot was added again or returned, already registered.
                     try:
                         await context.bot.send_message(
                             chat_id=user_id,
@@ -475,7 +441,6 @@ class ContentManagerBot:
                         pass
                     return
 
-                # It is a fresh channel
                 try:
                     text = f"✅ <b>Successfully registered {chat.title}!</b>\n\nIt is now isolated securely to your account and available for scheduled posts."
                     if getattr(channel, 'linked_chat_id', None):

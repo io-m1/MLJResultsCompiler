@@ -43,8 +43,8 @@ cm_bot_initialized = False
 
 
 def start_bot_thread():
-    """Start Telegram bot in background thread (if enabled)"""
     global bot_thread, bot_initialized
+
     
     settings = get_settings()
     if not settings.ENABLE_TELEGRAM_BOT:
@@ -69,14 +69,11 @@ def start_bot_thread():
             
             logger.info("Initializing Telegram bot in background thread...")
             
-            # Wait longer for old instance to fully disconnect on Render.
-            # Render keeps old process alive during a rolling deploy for ~15-20s.
-            # 30s ensures NEW instance is the sole consumer of updates.
             time.sleep(30)
             
             load_dotenv(dotenv_path='.env')
             
-            # Import here to avoid circular imports
+
             try:
                 from telegram_bot import build_application
                 from telegram import Update
@@ -94,9 +91,8 @@ def start_bot_thread():
             asyncio.set_event_loop(loop)
             
             async def run_bot_with_retry():
-                """Run bot with retry logic. Returns True if should restart, False to exit."""
                 retry_count = 0
-                max_retries = 30  # More retries — Render free tier can take a while
+                max_retries = 30
                 
                 while retry_count < max_retries:
                     application = None
@@ -105,46 +101,31 @@ def start_bot_thread():
                         await application.initialize()
                         logger.info("Bot initialized")
                         
-                        # CRITICAL: Delete webhook AND drop pending updates BEFORE starting poll.
-                        # This prevents old updates from the previous deploy being replayed.
                         try:
                             await application.bot.delete_webhook(drop_pending_updates=True)
-                            logger.info("Webhook cleared and pending updates dropped")
-                        except Exception as e:
-                            logger.warning(f"Webhook delete warning (safe): {e}")
+                        except Exception:
+                            pass
                         
-                        # CRITICAL: Do NOT use run_polling() — it calls
-                        # loop.run_until_complete() internally which crashes
-                        # with "This event loop is already running" since we're
-                        # already inside an async context.
-                        # Instead, use the low-level async API directly.
-                        logger.info("Starting bot polling (async mode)...")
+                        logger.info("Starting bot polling...")
                         await application.start()
                         await application.updater.start_polling(
                             allowed_updates=Update.ALL_TYPES,
                             drop_pending_updates=True
                         )
-                        logger.info("✓ Bot is now polling for updates")
+                        logger.info("Bot is now polling for updates")
                         
-                        # Keep running until stopped externally
-                        # (This blocks the coroutine — the bot runs until the event is set)
                         stop_event = asyncio.Event()
                         await stop_event.wait()
                         
-                        # Clean shutdown (only reached if stop_event is set)
-                        logger.info("Bot stopping gracefully...")
                         await application.updater.stop()
                         await application.stop()
                         await application.shutdown()
-                        logger.info("Bot stopped gracefully")
-                        return False  # Don't restart if stopped gracefully
+                        return False
                         
                     except Conflict as e:
                         retry_count += 1
-                        # Longer waits for conflict — let old instance die
                         wait_time = 30 if retry_count <= 3 else min(5 ** min(retry_count - 3, 4), 120)
                         logger.error(f"Bot conflict #{retry_count}/{max_retries}: {e}")
-                        logger.warning(f"Waiting {wait_time}s for old instance to die...")
                         
                         if application:
                             try:
@@ -192,18 +173,17 @@ def start_bot_thread():
                         await asyncio.sleep(10)
                 
                 logger.error(f"Bot max retries ({max_retries}) exceeded")
-                return True  # Signal that we should restart after cooldown
+                return True
             
             async def run_bot_forever():
-                """Keep trying to start the bot — never give up permanently."""
                 restart_count = 0
                 while True:
                     should_restart = await run_bot_with_retry()
                     if not should_restart:
-                        break  # Graceful stop
+                        break
                     
                     restart_count += 1
-                    cooldown = min(60 * restart_count, 300)  # 60s, 120s, 180s... max 5min
+                    cooldown = min(60 * restart_count, 300)
                     logger.warning(f"Bot restart #{restart_count} — cooling down {cooldown}s before retry cycle...")
                     await asyncio.sleep(cooldown)
             
@@ -223,12 +203,11 @@ def start_bot_thread():
     
     thread = threading.Thread(target=bot_worker, daemon=False)
     thread.start()
-    logger.info("✓ Bot thread started")
+    logger.info("Bot thread started")
     return thread
 
 
 def start_cm_bot_thread():
-    """Start MLJCM Telegram bot in background thread"""
     global cm_bot_thread, cm_bot_initialized
     
     from dotenv import load_dotenv
@@ -252,7 +231,6 @@ def start_cm_bot_thread():
             import time
             from dotenv import load_dotenv
             logger.info("Initializing MLJCM bot in background thread...")
-            # Stagger startup: wait 15s to let BOTH Render old-process die and primary bot settle
             time.sleep(15)
             load_dotenv(dotenv_path='.env')
             
@@ -360,7 +338,7 @@ def start_cm_bot_thread():
             
     cm_bot_thread = threading.Thread(target=cm_worker, daemon=False, name="MLJCM-Thread")
     cm_bot_thread.start()
-    logger.info("✓ MLJCM bot thread started")
+    logger.info("MLJCM bot thread started")
     return cm_bot_thread
 
 
