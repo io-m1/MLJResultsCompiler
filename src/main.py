@@ -104,15 +104,29 @@ def start_bot_thread():
                         except:
                             pass
                         
-                        logger.info("Starting bot with run_polling()...")
-                        # run_polling handles the loop and keeps running until stopped
-                        # We disable signal handling (stop_signals=[]) because uvicorn handles signals
-                        await application.run_polling(
-                            allowed_updates=Update.ALL_TYPES, 
-                            stop_signals=[], 
-                            close_loop=False,
+                        # CRITICAL: Do NOT use run_polling() — it calls
+                        # loop.run_until_complete() internally which crashes
+                        # with "This event loop is already running" since we're
+                        # already inside an async context.
+                        # Instead, use the low-level async API directly.
+                        logger.info("Starting bot polling (async mode)...")
+                        await application.start()
+                        await application.updater.start_polling(
+                            allowed_updates=Update.ALL_TYPES,
                             drop_pending_updates=True
                         )
+                        logger.info("✓ Bot is now polling for updates")
+                        
+                        # Keep running until stopped externally
+                        # (This blocks the coroutine — the bot runs until the event is set)
+                        stop_event = asyncio.Event()
+                        await stop_event.wait()
+                        
+                        # Clean shutdown (only reached if stop_event is set)
+                        logger.info("Bot stopping gracefully...")
+                        await application.updater.stop()
+                        await application.stop()
+                        await application.shutdown()
                         logger.info("Bot stopped gracefully")
                         return False  # Don't restart if stopped gracefully
                         
@@ -125,7 +139,11 @@ def start_bot_thread():
                         
                         if application:
                             try:
-                                await application.stop()
+                                if application.updater and application.updater.running:
+                                    await application.updater.stop()
+                                if application.running:
+                                    await application.stop()
+                                await application.shutdown()
                             except:
                                 pass
                         
@@ -138,7 +156,11 @@ def start_bot_thread():
                         
                         if application:
                             try:
-                                await application.stop()
+                                if application.updater and application.updater.running:
+                                    await application.updater.stop()
+                                if application.running:
+                                    await application.stop()
+                                await application.shutdown()
                             except:
                                 pass
                         
@@ -150,7 +172,11 @@ def start_bot_thread():
                         
                         if application:
                             try:
-                                await application.stop()
+                                if application.updater and application.updater.running:
+                                    await application.updater.stop()
+                                if application.running:
+                                    await application.stop()
+                                await application.shutdown()
                             except:
                                 pass
                         
