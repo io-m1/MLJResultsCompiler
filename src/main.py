@@ -441,8 +441,18 @@ def create_app() -> FastAPI:
                     bot_status = "starting"
                 else:
                     bot_status = "dead"
+                    
+            # Check CM bot thread liveness
+            cm_bot_status = "disabled"
+            if settings.MLJCM_BOT_TOKEN:
+                if cm_bot_thread and cm_bot_thread.is_alive():
+                    cm_bot_status = "running"
+                elif bot_initialized: # initialized generally tracks bot boot phase
+                    cm_bot_status = "starting"
+                else:
+                    cm_bot_status = "dead"
             
-            overall = "healthy" if (bot_status in ("running", "disabled")) else "degraded"
+            overall = "healthy" if (bot_status in ("running", "disabled") and cm_bot_status in ("running", "disabled")) else "degraded"
             
             return {
                 "status": overall,
@@ -453,6 +463,8 @@ def create_app() -> FastAPI:
                 "ai_enabled": settings.ENABLE_AI_ASSISTANT,
                 "bot_enabled": settings.ENABLE_TELEGRAM_BOT,
                 "bot_status": bot_status,
+                "cm_bot_enabled": bool(settings.MLJCM_BOT_TOKEN),
+                "cm_bot_status": cm_bot_status,
             }
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -471,23 +483,42 @@ def create_app() -> FastAPI:
     # Bot health endpoint
     @app.get("/bot-health", tags=["health"])
     async def bot_health():
-        """Detailed bot health check - verifies Telegram bot is alive and responsive"""
+        """Detailed bot health check - verifies Telegram bots are alive and responsive"""
         bot_info = {
-            "bot_enabled": settings.ENABLE_TELEGRAM_BOT,
-            "bot_thread_alive": bot_thread is not None and bot_thread.is_alive() if bot_thread else False,
-            "bot_initialized": bot_initialized,
-            "token_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+            "primary_bot": {
+                "enabled": settings.ENABLE_TELEGRAM_BOT,
+                "thread_alive": bot_thread is not None and bot_thread.is_alive() if bot_thread else False,
+                "initialized": bot_initialized,
+                "token_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+            },
+            "mljcm_bot": {
+                "enabled": bool(settings.MLJCM_BOT_TOKEN),
+                "thread_alive": cm_bot_thread is not None and cm_bot_thread.is_alive() if cm_bot_thread else False,
+                "token_configured": bool(settings.MLJCM_BOT_TOKEN),
+            }
         }
         
+        # Determine Primary status
         if not settings.ENABLE_TELEGRAM_BOT:
-            bot_info["status"] = "disabled"
+            bot_info["primary_bot"]["status"] = "disabled"
         elif bot_thread and bot_thread.is_alive():
-            bot_info["status"] = "healthy"
+            bot_info["primary_bot"]["status"] = "healthy"
         elif bot_initialized:
-            bot_info["status"] = "starting"
+            bot_info["primary_bot"]["status"] = "starting"
         else:
-            bot_info["status"] = "dead"
-            bot_info["action"] = "Bot thread has exited. Redeploy or restart to fix."
+            bot_info["primary_bot"]["status"] = "dead"
+            bot_info["primary_bot"]["action"] = "Bot thread has exited. Redeploy or restart to fix."
+            
+        # Determine MLJCM status
+        if not settings.MLJCM_BOT_TOKEN:
+            bot_info["mljcm_bot"]["status"] = "disabled"
+        elif cm_bot_thread and cm_bot_thread.is_alive():
+            bot_info["mljcm_bot"]["status"] = "healthy"
+        elif bot_initialized:
+            bot_info["mljcm_bot"]["status"] = "starting"
+        else:
+            bot_info["mljcm_bot"]["status"] = "dead"
+            bot_info["mljcm_bot"]["action"] = "Bot thread has exited. Redeploy or restart to fix."
         
         return bot_info
     
@@ -512,15 +543,27 @@ def create_app() -> FastAPI:
             checks["database"] = {"status": "error", "error": str(e)}
             all_healthy = False
         
-        # 2. Bot thread check
+        # 2. Bot threads check
+        bot_threads = {}
         if settings.ENABLE_TELEGRAM_BOT:
             if bot_thread and bot_thread.is_alive():
-                checks["telegram_bot"] = {"status": "running", "thread_alive": True}
+                bot_threads["primary"] = {"status": "running", "thread_alive": True}
             else:
-                checks["telegram_bot"] = {"status": "dead", "thread_alive": False}
+                bot_threads["primary"] = {"status": "dead", "thread_alive": False}
                 all_healthy = False
         else:
-            checks["telegram_bot"] = {"status": "disabled"}
+            bot_threads["primary"] = {"status": "disabled"}
+            
+        if settings.MLJCM_BOT_TOKEN:
+            if cm_bot_thread and cm_bot_thread.is_alive():
+                bot_threads["mljcm"] = {"status": "running", "thread_alive": True}
+            else:
+                bot_threads["mljcm"] = {"status": "dead", "thread_alive": False}
+                all_healthy = False
+        else:
+            bot_threads["mljcm"] = {"status": "disabled"}
+            
+        checks["telegram_bots"] = bot_threads
         
         # 3. Async AI service check
         try:
@@ -573,6 +616,13 @@ def create_app() -> FastAPI:
                 bot_status = "running"
             else:
                 bot_status = "dead"
+                
+        cm_bot_status = "disabled"
+        if settings.MLJCM_BOT_TOKEN:
+            if cm_bot_thread and cm_bot_thread.is_alive():
+                cm_bot_status = "running"
+            else:
+                cm_bot_status = "dead"
         
         return {
             "app_name": settings.APP_NAME,
@@ -596,6 +646,8 @@ def create_app() -> FastAPI:
                 "ai_assistant": settings.ENABLE_AI_ASSISTANT,
                 "telegram_bot": settings.ENABLE_TELEGRAM_BOT,
                 "telegram_bot_status": bot_status,
+                "cm_bot_enabled": bool(settings.MLJCM_BOT_TOKEN),
+                "cm_bot_status": cm_bot_status,
             },
         }
     
