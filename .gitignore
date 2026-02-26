@@ -28,6 +28,10 @@ test_scalability.log
 # Secrets
 .env
 
+# Test data files (contain PII - never commit)
+*.xlsx
+!tests/**/*.xlsx
+
 # Deprecated/Test files (kept locally but not in repo)
 results_compiler_bot.py
 integration.py
