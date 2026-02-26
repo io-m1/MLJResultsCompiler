@@ -69,8 +69,10 @@ def start_bot_thread():
             
             logger.info("Initializing Telegram bot in background thread...")
             
-            # Wait for old instance to disconnect (Render keeps old process alive during deploy)
-            time.sleep(10)
+            # Wait longer for old instance to fully disconnect on Render.
+            # Render keeps old process alive during a rolling deploy for ~15-20s.
+            # 30s ensures NEW instance is the sole consumer of updates.
+            time.sleep(30)
             
             load_dotenv(dotenv_path='.env')
             
@@ -101,13 +103,15 @@ def start_bot_thread():
                     try:
                         application = build_application(token)
                         await application.initialize()
-                        logger.info("✓ Bot initialized")
+                        logger.info("Bot initialized")
                         
-                        # Delete any lingering webhook
+                        # CRITICAL: Delete webhook AND drop pending updates BEFORE starting poll.
+                        # This prevents old updates from the previous deploy being replayed.
                         try:
                             await application.bot.delete_webhook(drop_pending_updates=True)
-                        except:
-                            pass
+                            logger.info("Webhook cleared and pending updates dropped")
+                        except Exception as e:
+                            logger.warning(f"Webhook delete warning (safe): {e}")
                         
                         # CRITICAL: Do NOT use run_polling() — it calls
                         # loop.run_until_complete() internally which crashes
@@ -248,8 +252,8 @@ def start_cm_bot_thread():
             import time
             from dotenv import load_dotenv
             logger.info("Initializing MLJCM bot in background thread...")
-            # Stagger startup to lower CPU burst
-            time.sleep(5)
+            # Stagger startup: wait 15s to let BOTH Render old-process die and primary bot settle
+            time.sleep(15)
             load_dotenv(dotenv_path='.env')
             
             try:
