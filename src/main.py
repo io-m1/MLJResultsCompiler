@@ -41,6 +41,8 @@ cm_bot_thread = None
 cm_bot_lock = threading.Lock()
 cm_bot_initialized = False
 
+is_shutting_down = False
+
 
 def start_bot_thread():
     global bot_thread, bot_initialized
@@ -64,12 +66,9 @@ def start_bot_thread():
     
     def bot_worker():
         try:
-            import time
             from dotenv import load_dotenv
             
             logger.info("Initializing Telegram bot in background thread...")
-            
-            time.sleep(30)
             
             load_dotenv(dotenv_path='.env')
             
@@ -114,13 +113,26 @@ def start_bot_thread():
                         )
                         logger.info("Bot is now polling for updates")
                         
-                        stop_event = asyncio.Event()
-                        await stop_event.wait()
-                        
-                        await application.updater.stop()
-                        await application.stop()
-                        await application.shutdown()
-                        return False
+                        while application.updater and application.updater.running and not is_shutting_down:
+                            await asyncio.sleep(2)
+                            
+                        if is_shutting_down:
+                            logger.info("Shutting down bot gracefully...")
+                            await application.updater.stop()
+                            await application.stop()
+                            await application.shutdown()
+                            return False
+                        else:
+                            logger.warning("Bot polling stopped unexpectedly. Preparing to restart...")
+                            try:
+                                await application.updater.stop()
+                                await application.stop()
+                                await application.shutdown()
+                            except Exception:
+                                pass
+                            
+                            await asyncio.sleep(10)
+                            return True
                         
                     except Conflict as e:
                         retry_count += 1
@@ -201,7 +213,7 @@ def start_bot_thread():
             with bot_lock:
                 bot_initialized = False
     
-    thread = threading.Thread(target=bot_worker, daemon=False)
+    thread = threading.Thread(target=bot_worker, daemon=True)
     thread.start()
     logger.info("Bot thread started")
     return thread
@@ -228,10 +240,8 @@ def start_cm_bot_thread():
         
     def cm_worker():
         try:
-            import time
             from dotenv import load_dotenv
             logger.info("Initializing MLJCM bot in background thread...")
-            time.sleep(15)
             load_dotenv(dotenv_path='.env')
             
             try:
@@ -269,11 +279,22 @@ def start_cm_bot_thread():
                         logger.info("Starting MLJCM polling...")
                         await cm_bot.start_polling()
                         
-                        stop_event = asyncio.Event()
-                        await stop_event.wait()
-                        
-                        await cm_bot.shutdown()
-                        return False
+                        while cm_bot.application.updater and cm_bot.application.updater.running and not is_shutting_down:
+                            await asyncio.sleep(2)
+                            
+                        if is_shutting_down:
+                            logger.info("Shutting down MLJCM gracefully...")
+                            await cm_bot.shutdown()
+                            return False
+                        else:
+                            logger.warning("MLJCM polling stopped unexpectedly. Preparing to restart...")
+                            try:
+                                await cm_bot.shutdown()
+                            except Exception:
+                                pass
+                            
+                            await asyncio.sleep(10)
+                            return True
                         
                     except Conflict as e:
                         retry_count += 1
@@ -336,7 +357,7 @@ def start_cm_bot_thread():
         except Exception as e:
             logger.error(f"Failed to start MLJCM bot thread: {e}", exc_info=True)
             
-    cm_bot_thread = threading.Thread(target=cm_worker, daemon=False, name="MLJCM-Thread")
+    cm_bot_thread = threading.Thread(target=cm_worker, daemon=True, name="MLJCM-Thread")
     cm_bot_thread.start()
     logger.info("MLJCM bot thread started")
     return cm_bot_thread
@@ -349,7 +370,7 @@ async def lifespan(app: FastAPI):
     Application lifecycle management.
     Handles startup and graceful shutdown.
     """
-    global bot_thread, cm_bot_thread
+    global bot_thread, cm_bot_thread, is_shutting_down
     
     # STARTUP
     logger.info("=" * 60)
@@ -413,6 +434,8 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info("🛑 MLJ Results Compiler Shutting Down")
     logger.info("=" * 60)
+    
+    is_shutting_down = True
     
     try:
         # Cleanup async services
