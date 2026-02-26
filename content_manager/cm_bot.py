@@ -69,6 +69,7 @@ class ContentManagerBot:
         
         # Channels Navigation
         self.application.add_handler(CallbackQueryHandler(self.show_channels, pattern="^channels_list$"))
+        self.application.add_handler(CallbackQueryHandler(self.toggle_linked_group, pattern="^toggle_linked_"))
         
         # Catch-all for when bot is added to a channel (chat member updates)
         self.application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, self.handle_new_chat_members))
@@ -129,7 +130,7 @@ class ContentManagerBot:
         query = update.callback_query
         await query.answer()
         
-        contents = self.storage.get_all_content()
+        contents = self.storage.get_all_content(update.effective_user.id)
         keyboard = [[InlineKeyboardButton("➕ Add New Content", callback_data="new_content")]]
         
         for c in contents:
@@ -148,7 +149,7 @@ class ContentManagerBot:
         await query.answer()
         
         content_id = int(query.data.split('_')[2])
-        content = self.storage.get_content(content_id)
+        content = self.storage.get_content(content_id, update.effective_user.id)
         
         if not content:
             await query.edit_message_text(
@@ -249,7 +250,7 @@ class ContentManagerBot:
         await query.answer()
         
         content_id = int(query.data.split('_')[2])
-        channels = self.storage.get_all_channels()
+        channels = self.storage.get_all_channels(update.effective_user.id)
         
         if not channels:
             await query.edit_message_text(
@@ -330,7 +331,8 @@ class ContentManagerBot:
         query = update.callback_query
         await query.answer()
         
-        schedules = self.storage.get_all_schedules()
+        user_id = update.effective_user.id
+        schedules = self.storage.get_all_schedules(user_id)
         
         if not schedules:
             await query.edit_message_text(
@@ -343,7 +345,7 @@ class ContentManagerBot:
         keyboard = []
         
         for s in schedules:
-            content = self.storage.get_content(s.content_id)
+            content = self.storage.get_content(s.content_id, user_id)
             channel = self.storage.get_channel(s.channel_id)
             c_title = content.title if content else "Deleted"
             ch_title = channel.title if channel else "Deleted"
@@ -397,20 +399,39 @@ class ContentManagerBot:
         query = update.callback_query
         await query.answer()
         
-        channels = self.storage.get_all_channels()
+        channels = self.storage.get_all_channels(update.effective_user.id)
         text = "📻 <b>Registered Channels</b>\n\n"
+        keyboard = []
         
         if not channels:
             text += "None yet. Add me to a channel as an Admin to register it."
         else:
             for c in channels:
-                text += f"• <b>{c.title}</b>\n"
+                text += f"• <b>{c.title}</b>"
+                if c.linked_chat_id:
+                    status = "✅ ON" if c.post_to_linked else "❌ OFF"
+                    text += f" (Linked Group: {status})"
+                    keyboard.append([InlineKeyboardButton(f"Toggle Linked for {c.title}", callback_data=f"toggle_linked_{c.id}")])
+                text += "\n"
+                
+        keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
                 
         await query.edit_message_text(
             text,
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]])
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
+
+    async def toggle_linked_group(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        channel_id = int(query.data.split('_')[2])
+        
+        channel = self.storage.get_channel(channel_id)
+        if channel and channel.linked_chat_id:
+            new_state = not channel.post_to_linked
+            self.storage.update_linked_chat(channel_id, channel.linked_chat_id, new_state)
+            
+        await self.show_channels(update, context)
 
     async def handle_new_chat_members(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Automatically detect when bot is added to a channel/group"""
@@ -420,19 +441,47 @@ class ContentManagerBot:
                 chat = update.effective_chat
                 user_id = update.message.from_user.id
                 
-                self.storage.add_channel(
+                # Register channel and check if it already exists
+                channel, is_new = self.storage.add_channel(
                     chat_id=chat.id,
                     title=chat.title,
                     chat_type=chat.type,
                     added_by=user_id
                 )
                 
-                logger.info(f"MLJCM Bot added to {chat.type}: {chat.title} ({chat.id})")
+                logger.info(f"MLJCM Bot added to {chat.type}: {chat.title} ({chat.id}) - New: {is_new}")
                 
+                # Immediately check for linked groups
                 try:
+                    full_chat = await context.bot.get_chat(chat.id)
+                    if full_chat.linked_chat_id:
+                        self.storage.update_linked_chat(channel.id, full_chat.linked_chat_id, True)
+                        logger.info(f"Found and linked group {full_chat.linked_chat_id} to channel {chat.title}")
+                except Exception as e:
+                    logger.warning(f"Could not check linked chat for {chat.title}: {e}")
+                
+                if not is_new:
+                    # Bot was added again or returned, already registered.
+                    try:
+                        await context.bot.send_message(
+                            chat_id=user_id,
+                            text=f"⚠️ <b>Channel Already Registered</b>\n\nI was already registered to <b>{chat.title}</b>. Your data is safe.",
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=self.get_main_menu_keyboard()
+                        )
+                    except Exception:
+                        pass
+                    return
+
+                # It is a fresh channel
+                try:
+                    text = f"✅ <b>Successfully registered {chat.title}!</b>\n\nIt is now isolated securely to your account and available for scheduled posts."
+                    if getattr(channel, 'linked_chat_id', None):
+                        text += "\n\n<i>Note: A linked discussion group was detected. I will post to it seamlessly by default. You can toggle this off in Registered Channels.</i>"
+                        
                     await context.bot.send_message(
                         chat_id=user_id,
-                        text=f"✅ <b>Successfully registered {chat.title}!</b>\n\nIt is now available for scheduled posts.",
+                        text=text,
                         parse_mode=ParseMode.HTML,
                         reply_markup=self.get_main_menu_keyboard()
                     )

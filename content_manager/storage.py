@@ -8,11 +8,30 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, Float, D
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.pool import NullPool
 
-from .models import Channel, ContentPost, Schedule
+from .models import Channel, ContentPost, Schedule, ChannelAdmin
 
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
+
+class DBChannelAdmin(Base):
+    __tablename__ = 'channel_admins'
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(Integer, ForeignKey('channels.id', ondelete='CASCADE'), index=True)
+    user_id = Column(BigInteger, index=True)
+    role = Column(String)  # 'owner', 'admin'
+    added_at = Column(DateTime, default=datetime.utcnow)
+    
+    channel = relationship("DBChannel", back_populates="admins")
+
+    def to_dataclass(self) -> ChannelAdmin:
+        return ChannelAdmin(
+            id=self.id,
+            channel_id=self.channel_id,
+            user_id=self.user_id,
+            role=self.role,
+            added_at=self.added_at
+        )
 
 class DBChannel(Base):
     __tablename__ = 'channels'
@@ -22,8 +41,11 @@ class DBChannel(Base):
     type = Column(String, default="channel")
     added_by = Column(BigInteger, nullable=False)
     added_at = Column(DateTime, default=datetime.utcnow)
+    linked_chat_id = Column(BigInteger, nullable=True)
+    post_to_linked = Column(Boolean, default=False)
     
     schedules = relationship("DBSchedule", back_populates="channel", cascade="all, delete-orphan")
+    admins = relationship("DBChannelAdmin", back_populates="channel", cascade="all, delete-orphan")
 
     def to_dataclass(self) -> Channel:
         return Channel(
@@ -32,7 +54,9 @@ class DBChannel(Base):
             title=self.title or "",
             type=self.type or "channel",
             added_by=self.added_by,
-            added_at=self.added_at
+            added_at=self.added_at,
+            linked_chat_id=self.linked_chat_id,
+            post_to_linked=self.post_to_linked
         )
 
 
@@ -136,35 +160,52 @@ class CMStorage:
 
     # --- Channels ---
     
-    def add_channel(self, chat_id: int, title: str, chat_type: str, added_by: int) -> Channel:
+    def add_channel(self, chat_id: int, title: str, chat_type: str, added_by: int) -> tuple[Optional[Channel], bool]:
+        """Returns (Channel, is_new). If already exists, returns (existing, False) to prevent duplicate addition."""
         with self.get_session() as session:
             db_channel = session.query(DBChannel).filter(DBChannel.chat_id == chat_id).first()
             if db_channel:
-                db_channel.title = title
-                db_channel.type = chat_type
-            else:
-                db_channel = DBChannel(
-                    chat_id=chat_id,
-                    title=title,
-                    type=chat_type,
-                    added_by=added_by
-                )
-                session.add(db_channel)
+                return db_channel.to_dataclass(), False
+            
+            # Create new
+            db_channel = DBChannel(
+                chat_id=chat_id,
+                title=title,
+                type=chat_type,
+                added_by=added_by
+            )
+            session.add(db_channel)
             session.flush()
-            return db_channel.to_dataclass()
+            
+            # Assign owner
+            admin = DBChannelAdmin(
+                channel_id=db_channel.id,
+                user_id=added_by,
+                role='owner'
+            )
+            session.add(admin)
+            session.flush()
+            
+            return db_channel.to_dataclass(), True
 
     def get_channel(self, channel_id: int) -> Optional[Channel]:
         with self.get_session() as session:
             db_channel = session.query(DBChannel).filter(DBChannel.id == channel_id).first()
             return db_channel.to_dataclass() if db_channel else None
 
-    def get_all_channels(self, user_id: Optional[int] = None) -> List[Channel]:
+    def get_all_channels(self, user_id: int) -> List[Channel]:
         with self.get_session() as session:
-            query = session.query(DBChannel)
-            if user_id:
-               # In future, if we want to restrict by user
-                pass 
+            query = session.query(DBChannel).join(DBChannelAdmin).filter(DBChannelAdmin.user_id == user_id)
             return [c.to_dataclass() for c in query.all()]
+            
+    def update_linked_chat(self, channel_id: int, linked_chat_id: Optional[int], pos_to_linked: bool) -> bool:
+        with self.get_session() as session:
+            db_channel = session.query(DBChannel).filter(DBChannel.id == channel_id).first()
+            if db_channel:
+                db_channel.linked_chat_id = linked_chat_id
+                db_channel.post_to_linked = pos_to_linked
+                return True
+            return False
             
     # --- Content ---
 
@@ -179,14 +220,20 @@ class CMStorage:
             session.flush()
             return db_content.to_dataclass()
             
-    def get_content(self, content_id: int) -> Optional[ContentPost]:
+    def get_content(self, content_id: int, user_id: Optional[int] = None) -> Optional[ContentPost]:
         with self.get_session() as session:
-            db_content = session.query(DBContentPost).filter(DBContentPost.id == content_id).first()
+            query = session.query(DBContentPost).filter(DBContentPost.id == content_id)
+            if user_id is not None:
+                query = query.filter(DBContentPost.created_by == user_id)
+            db_content = query.first()
             return db_content.to_dataclass() if db_content else None
             
-    def get_all_content(self) -> List[ContentPost]:
+    def get_all_content(self, user_id: Optional[int] = None) -> List[ContentPost]:
         with self.get_session() as session:
-            return [c.to_dataclass() for c in session.query(DBContentPost).all()]
+            query = session.query(DBContentPost)
+            if user_id is not None:
+                query = query.filter(DBContentPost.created_by == user_id)
+            return [c.to_dataclass() for c in query.all()]
 
     def update_content(self, content_id: int, title: str, body: str) -> Optional[ContentPost]:
         with self.get_session() as session:
@@ -224,15 +271,19 @@ class CMStorage:
             session.flush()
             return db_schedule.to_dataclass()
 
-    def get_all_schedules(self, active_only: bool = False) -> List[Schedule]:
+    def get_all_schedules(self, user_id: Optional[int] = None, active_only: bool = False) -> List[Schedule]:
         with self.get_session() as session:
             query = session.query(DBSchedule)
+            if user_id is not None:
+                query = query.join(DBContentPost).filter(DBContentPost.created_by == user_id)
+                
             if active_only:
                 query = query.filter(DBSchedule.is_active == True)
             return [s.to_dataclass() for s in query.all()]
             
     def get_schedule(self, schedule_id: int) -> Optional[Schedule]:
         with self.get_session() as session:
+            # No user filter here since this is often called internally by the scheduler logic
             db_schedule = session.query(DBSchedule).filter(DBSchedule.id == schedule_id).first()
             return db_schedule.to_dataclass() if db_schedule else None
 

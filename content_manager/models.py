@@ -11,6 +11,17 @@ class Channel:
     type: str  # 'channel' or 'group'
     added_by: int
     added_at: datetime
+    linked_chat_id: Optional[int] = None
+    post_to_linked: bool = False
+
+@dataclass
+class ChannelAdmin:
+    """RBAC representation connecting users to channels as managers"""
+    id: int
+    channel_id: int
+    user_id: int
+    role: str  # 'owner', 'admin'
+    added_at: datetime
 
 @dataclass
 class ContentPost:

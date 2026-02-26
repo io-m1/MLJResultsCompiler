@@ -67,7 +67,7 @@ class CMScheduler:
             self._post_content_job,
             trigger=trigger,
             id=job_id,
-            args=[schedule.id, channel.chat_id, content.body, schedule.repeat_until],
+            args=[schedule.id, channel.id, content.body, schedule.repeat_until],
             replace_existing=True
         )
         return True
@@ -78,7 +78,7 @@ class CMScheduler:
         if self.scheduler.get_job(job_id):
             self.scheduler.remove_job(job_id)
             
-    async def _post_content_job(self, schedule_id: int, chat_id: int, text: str, repeat_until: datetime):
+    async def _post_content_job(self, schedule_id: int, channel_id: int, text: str, repeat_until: datetime):
         """The actual coroutine that posts the message to Telegram"""
         now = datetime.utcnow()
         
@@ -88,14 +88,28 @@ class CMScheduler:
             self.remove_job_for_schedule(schedule_id)
             return
 
+        channel = self.storage.get_channel(channel_id)
+        if not channel:
+            logger.error(f"Cannot post schedule {schedule_id}: channel {channel_id} not found")
+            return
+
         try:
             # Try to send as HTML (bold, italic, etc), fallback to plain text if malformed HTML
             try:
-                await self.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+                msg = await self.bot.send_message(chat_id=channel.chat_id, text=text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             except Exception:
-                await self.bot.send_message(chat_id=chat_id, text=text, disable_web_page_preview=True)
+                msg = await self.bot.send_message(chat_id=channel.chat_id, text=text, disable_web_page_preview=True)
                 
+            logger.info(f"Successfully posted schedule {schedule_id} to chat {channel.chat_id}")
+            
+            # Post to linked chat if requested
+            if channel.linked_chat_id and channel.post_to_linked:
+                try:
+                    await self.bot.forward_message(chat_id=channel.linked_chat_id, from_chat_id=channel.chat_id, message_id=msg.message_id)
+                    logger.info(f"Successfully forwarded schedule {schedule_id} to linked chat {channel.linked_chat_id}")
+                except Exception as e:
+                    logger.error(f"Failed to forward schedule {schedule_id} to linked chat {channel.linked_chat_id}: {e}")
+            
             self.storage.update_last_posted(schedule_id, now)
-            logger.info(f"Successfully posted schedule {schedule_id} to chat {chat_id}")
         except Exception as e:
-            logger.error(f"Failed to post schedule {schedule_id} to chat {chat_id}: {e}")
+            logger.error(f"Failed to post schedule {schedule_id} to chat {channel.chat_id}: {e}")
