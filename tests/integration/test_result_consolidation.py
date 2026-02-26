@@ -17,8 +17,8 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.excel_processor import ExcelProcessor
 from src.participation_bonus import ParticipationBonusCalculator

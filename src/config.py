@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     if ConfigDict is not None:
         model_config = ConfigDict(
             env_file=".env",
-            env_file_encoding="utf-16le", # Common encoding for some local editors
+            env_file_encoding="utf-8",
             case_sensitive=True,
             extra="allow"
         )
@@ -171,16 +171,24 @@ def validate_settings():
     s = get_settings()
     
     errors = []
+    warnings = []
     
     # Check required settings
     if s.ENABLE_TELEGRAM_BOT and not s.TELEGRAM_BOT_TOKEN:
         errors.append("TELEGRAM_BOT_TOKEN not set but bot enabled")
     
+    # WEBHOOK_BASE_URL is optional for polling mode (only required for webhook mode)
     if s.ENABLE_TELEGRAM_BOT and not s.WEBHOOK_BASE_URL:
-        errors.append("WEBHOOK_BASE_URL not set but bot enabled")
+        warnings.append("WEBHOOK_BASE_URL not set - bot will use polling mode (this is fine)")
     
     if s.ENABLE_AI_ASSISTANT and not s.GROQ_API_KEY:
         errors.append("GROQ_API_KEY not set but AI enabled")
+    
+    if warnings:
+        import logging
+        logger = logging.getLogger(__name__)
+        for w in warnings:
+            logger.warning(f"  ⚠ {w}")
     
     if errors:
         error_msg = "Configuration errors:\n" + "\n".join(f"  - {e}" for e in errors)

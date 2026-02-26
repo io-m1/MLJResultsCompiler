@@ -22,6 +22,17 @@ from telegram.ext import (
 )
 from telegram.error import TelegramError
 
+# Setup logging EARLY so it's available for import error handling
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('telegram_bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 from src.excel_processor import ExcelProcessor
 from src.session_manager import SessionManager, WorkflowAgent, ConversationalSession
 # Import conversational components (with fallback if not available)
@@ -37,17 +48,6 @@ except ImportError as e:
 
 # Load environment variables
 load_dotenv(dotenv_path='.env')
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('telegram_bot.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 # Conversation states
 SELECTING_FORMAT = 1

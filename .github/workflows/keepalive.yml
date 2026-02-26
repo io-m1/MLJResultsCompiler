@@ -1,4 +1,4 @@
-name: Render Keepalive
+name: Bot Liveness Monitor & Keepalive
 
 on:
   schedule:
@@ -6,16 +6,90 @@ on:
   workflow_dispatch:        # Allow manual triggering
 
 jobs:
-  ping:
+  health-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Render App
+      - name: Check Health Endpoint
+        id: health
         run: |
           URL="https://mljresultscompiler.onrender.com/health"
           echo "Pinging $URL..."
-          if ! curl -s -f "$URL"; then
-            echo "Ping failed! Triggering deploy hook..."
-            curl -X POST "https://api.render.com/deploy/srv-d5v2bviqcgvc7398shog?key=JXiRdSFkZO8"
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" "$URL" || echo "CURL_FAILED")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "HTTP Code: $HTTP_CODE"
+          echo "Response: $BODY"
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "health_ok=false" >> $GITHUB_OUTPUT
+            echo "reason=HTTP $HTTP_CODE" >> $GITHUB_OUTPUT
+          else
+            # Check if bot_status is running
+            BOT_STATUS=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('bot_status','unknown'))" 2>/dev/null || echo "unknown")
+            echo "Bot status: $BOT_STATUS"
+            
+            if [ "$BOT_STATUS" = "running" ]; then
+              echo "health_ok=true" >> $GITHUB_OUTPUT
+              echo "✅ Health check passed - bot is running"
+            elif [ "$BOT_STATUS" = "disabled" ]; then
+              echo "health_ok=true" >> $GITHUB_OUTPUT
+              echo "✅ Health check passed - bot intentionally disabled"
+            else
+              echo "health_ok=false" >> $GITHUB_OUTPUT
+              echo "reason=bot_status is $BOT_STATUS" >> $GITHUB_OUTPUT
+              echo "⚠️ Bot is not running (status: $BOT_STATUS)"
+            fi
+          fi
+
+      - name: Check Liveness (Full System)
+        id: liveness
+        if: steps.health.outputs.health_ok == 'true'
+        run: |
+          URL="https://mljresultscompiler.onrender.com/liveness"
+          echo "Checking liveness at $URL..."
+          
+          RESPONSE=$(curl -s -f "$URL" || echo "LIVENESS_FAILED")
+          echo "Liveness response: $RESPONSE"
+          
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unknown")
+          echo "System status: $STATUS"
+          
+          if [ "$STATUS" = "healthy" ]; then
+            echo "✅ All subsystems healthy"
+            echo "liveness_ok=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ System degraded: $STATUS"
+            echo "liveness_ok=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Trigger Render Redeploy (if unhealthy)
+        if: steps.health.outputs.health_ok == 'false'
+        run: |
+          echo "🔄 Bot is unhealthy, triggering Render redeploy..."
+          echo "Reason: ${{ steps.health.outputs.reason }}"
+          
+          curl -X POST "https://api.render.com/deploy/srv-d5v2bviqcgvc7398shog?key=JXiRdSFkZO8"
+          echo ""
+          echo "✅ Redeploy triggered. Bot should be back within 2-5 minutes."
+
+      - name: Wait for Redeploy (if triggered)
+        if: steps.health.outputs.health_ok == 'false'
+        run: |
+          echo "Waiting 180 seconds for Render to redeploy..."
+          sleep 180
+          
+          echo "Checking if bot is now responsive..."
+          RESPONSE=$(curl -s -f "https://mljresultscompiler.onrender.com/health" || echo "STILL_DOWN")
+          echo "Post-redeploy health: $RESPONSE"
+          
+          BOT_STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('bot_status','unknown'))" 2>/dev/null || echo "unknown")
+          
+          if [ "$BOT_STATUS" = "running" ]; then
+            echo "✅ Bot successfully recovered after redeploy!"
+          else
+            echo "⚠️ Bot still not running after redeploy (status: $BOT_STATUS)"
+            echo "Manual intervention may be needed."
             exit 1
           fi
-          echo "✓ Success"

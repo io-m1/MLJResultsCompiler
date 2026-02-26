@@ -299,14 +299,28 @@ def create_app() -> FastAPI:
         try:
             db = get_session_db()
             stats = db.get_session_statistics()
+            
+            # Check bot thread liveness
+            bot_status = "disabled"
+            if settings.ENABLE_TELEGRAM_BOT:
+                if bot_thread and bot_thread.is_alive():
+                    bot_status = "running"
+                elif bot_initialized:
+                    bot_status = "starting"
+                else:
+                    bot_status = "dead"
+            
+            overall = "healthy" if (bot_status in ("running", "disabled")) else "degraded"
+            
             return {
-                "status": "healthy",
+                "status": overall,
                 "version": settings.APP_VERSION,
                 "environment": settings.ENV,
                 "database": "ok",
                 "sessions_active": stats["total_sessions"],
                 "ai_enabled": settings.ENABLE_AI_ASSISTANT,
                 "bot_enabled": settings.ENABLE_TELEGRAM_BOT,
+                "bot_status": bot_status,
             }
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -322,6 +336,97 @@ def create_app() -> FastAPI:
         """Minimal ping endpoint for keepalive systems"""
         return {"status": "pong"}
     
+    # Bot health endpoint
+    @app.get("/bot-health", tags=["health"])
+    async def bot_health():
+        """Detailed bot health check - verifies Telegram bot is alive and responsive"""
+        bot_info = {
+            "bot_enabled": settings.ENABLE_TELEGRAM_BOT,
+            "bot_thread_alive": bot_thread is not None and bot_thread.is_alive() if bot_thread else False,
+            "bot_initialized": bot_initialized,
+            "token_configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+        }
+        
+        if not settings.ENABLE_TELEGRAM_BOT:
+            bot_info["status"] = "disabled"
+        elif bot_thread and bot_thread.is_alive():
+            bot_info["status"] = "healthy"
+        elif bot_initialized:
+            bot_info["status"] = "starting"
+        else:
+            bot_info["status"] = "dead"
+            bot_info["action"] = "Bot thread has exited. Redeploy or restart to fix."
+        
+        return bot_info
+    
+    # Comprehensive liveness endpoint - tests ALL subsystems
+    @app.get("/liveness", tags=["health"])
+    async def liveness_check():
+        """
+        Comprehensive liveness check - verifies ALL subsystems are responsive.
+        Tests: database, bot thread, async services, file system.
+        Use this to confirm the entire application is functional.
+        """
+        from datetime import datetime
+        checks = {}
+        all_healthy = True
+        
+        # 1. Database check
+        try:
+            db = get_session_db()
+            stats = db.get_session_statistics()
+            checks["database"] = {"status": "ok", "sessions": stats["total_sessions"]}
+        except Exception as e:
+            checks["database"] = {"status": "error", "error": str(e)}
+            all_healthy = False
+        
+        # 2. Bot thread check
+        if settings.ENABLE_TELEGRAM_BOT:
+            if bot_thread and bot_thread.is_alive():
+                checks["telegram_bot"] = {"status": "running", "thread_alive": True}
+            else:
+                checks["telegram_bot"] = {"status": "dead", "thread_alive": False}
+                all_healthy = False
+        else:
+            checks["telegram_bot"] = {"status": "disabled"}
+        
+        # 3. Async AI service check
+        try:
+            from src.async_ai_service import get_async_ai_service
+            ai_svc = get_async_ai_service()
+            checks["ai_service"] = {"status": "ok", "llm_available": ai_svc.ai is not None and ai_svc.ai.llm_enabled if ai_svc.ai else False}
+        except Exception as e:
+            checks["ai_service"] = {"status": "error", "error": str(e)}
+            # Non-critical - don't mark as unhealthy
+        
+        # 4. File system check
+        try:
+            upload_dir = Path(settings.UPLOAD_DIR)
+            output_dir = Path(settings.OUTPUT_DIR)
+            checks["filesystem"] = {
+                "status": "ok",
+                "upload_dir_exists": upload_dir.exists(),
+                "output_dir_exists": output_dir.exists(),
+            }
+        except Exception as e:
+            checks["filesystem"] = {"status": "error", "error": str(e)}
+            all_healthy = False
+        
+        # 5. Config check
+        checks["config"] = {
+            "status": "ok",
+            "env": settings.ENV,
+            "bot_enabled": settings.ENABLE_TELEGRAM_BOT,
+            "ai_enabled": settings.ENABLE_AI_ASSISTANT,
+        }
+        
+        return {
+            "status": "healthy" if all_healthy else "degraded",
+            "timestamp": datetime.now().isoformat(),
+            "version": settings.APP_VERSION,
+            "checks": checks,
+        }
+    
     # Status endpoint
     @app.get("/status", tags=["status"])
     async def status():
@@ -329,6 +434,13 @@ def create_app() -> FastAPI:
         db = get_session_db()
         stats = db.get_session_statistics()
         settings = get_settings()
+        
+        bot_status = "disabled"
+        if settings.ENABLE_TELEGRAM_BOT:
+            if bot_thread and bot_thread.is_alive():
+                bot_status = "running"
+            else:
+                bot_status = "dead"
         
         return {
             "app_name": settings.APP_NAME,
@@ -351,6 +463,7 @@ def create_app() -> FastAPI:
             "features": {
                 "ai_assistant": settings.ENABLE_AI_ASSISTANT,
                 "telegram_bot": settings.ENABLE_TELEGRAM_BOT,
+                "telegram_bot_status": bot_status,
             },
         }
     
