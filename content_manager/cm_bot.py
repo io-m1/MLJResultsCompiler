@@ -26,7 +26,9 @@ class ContentManagerBot:
     def __init__(self, token: str, storage: CMStorage):
         self.token = token
         self.storage = storage
-        self.application = Application.builder().token(token).build()
+        # Disable built-in JobQueue: Python 3.13 breaks weakref.ref(Application).
+        # We use APScheduler (CMScheduler) instead.
+        self.application = Application.builder().token(token).job_queue(None).build()
         self.scheduler = CMScheduler(self.application.bot, self.storage)
         self._setup_handlers()
 

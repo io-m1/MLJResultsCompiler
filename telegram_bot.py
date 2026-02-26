@@ -882,7 +882,10 @@ class TelegramBotHandler:
 
 def build_application(token: str) -> Application:
     """Construct the PTB Application with handlers registered."""
-    application = Application.builder().token(token).build()
+    # CRITICAL: Disable built-in JobQueue to fix Python 3.13 weakref crash.
+    # python-telegram-bot's JobQueue uses weakref.ref(application), which fails
+    # on Python 3.13 due to __slots__ changes. We don't use the built-in JobQueue.
+    application = Application.builder().token(token).job_queue(None).build()
     handler = TelegramBotHandler(token)
 
     conv_handler = ConversationHandler(
