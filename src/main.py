@@ -36,6 +36,11 @@ bot_thread = None
 bot_lock = threading.Lock()
 bot_initialized = False
 
+# Content Manager bot thread and state
+cm_bot_thread = None
+cm_bot_lock = threading.Lock()
+cm_bot_initialized = False
+
 
 def start_bot_thread():
     """Start Telegram bot in background thread (if enabled)"""
@@ -218,6 +223,81 @@ def start_bot_thread():
     return thread
 
 
+def start_cm_bot_thread():
+    """Start MLJCM Telegram bot in background thread"""
+    global cm_bot_thread, cm_bot_initialized
+    
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path='.env')
+    
+    settings = get_settings()
+    token = settings.MLJCM_BOT_TOKEN or os.getenv('MLJCM_BOT_TOKEN')
+    
+    if not token:
+        logger.info("MLJCM_BOT_TOKEN not set, Content Manager bot will not start")
+        return None
+        
+    with cm_bot_lock:
+        if cm_bot_initialized and cm_bot_thread and cm_bot_thread.is_alive():
+            logger.warning("MLJCM bot already running, skipping duplicate")
+            return cm_bot_thread
+        cm_bot_initialized = True
+        
+    def cm_worker():
+        try:
+            import time
+            from dotenv import load_dotenv
+            logger.info("Initializing MLJCM bot in background thread...")
+            # Stagger startup to lower CPU burst
+            time.sleep(5)
+            load_dotenv(dotenv_path='.env')
+            
+            try:
+                from content_manager.cm_bot import ContentManagerBot
+                from content_manager.storage import CMStorage
+            except Exception as e:
+                logger.error(f"Failed to import MLJCM components: {e}", exc_info=True)
+                return
+                
+            token = getattr(get_settings(), 'MLJCM_BOT_TOKEN', None) or os.getenv('MLJCM_BOT_TOKEN')
+            if not token:
+                logger.error("MLJCM_BOT_TOKEN not available in bot thread")
+                return
+                
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            async def run_cm_bot():
+                storage = CMStorage()
+                cm_bot = ContentManagerBot(token=token, storage=storage)
+                try:
+                    await cm_bot.initialize()
+                    await cm_bot.start_polling()
+                    stop_event = asyncio.Event()
+                    await stop_event.wait()
+                    await cm_bot.shutdown()
+                except Exception as e:
+                    logger.error(f"MLJCM Bot error: {e}", exc_info=True)
+                    
+            try:
+                loop.run_until_complete(run_cm_bot())
+            except Exception as e:
+                logger.error(f"Fatal MLJCM error: {e}", exc_info=True)
+            finally:
+                loop.close()
+                global cm_bot_initialized
+                with cm_bot_lock:
+                    cm_bot_initialized = False
+            
+        except Exception as e:
+            logger.error(f"Failed to start MLJCM bot thread: {e}", exc_info=True)
+            
+    cm_bot_thread = threading.Thread(target=cm_worker, daemon=False, name="MLJCM-Thread")
+    cm_bot_thread.start()
+    logger.info("✓ MLJCM bot thread started")
+    return cm_bot_thread
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -225,7 +305,7 @@ async def lifespan(app: FastAPI):
     Application lifecycle management.
     Handles startup and graceful shutdown.
     """
-    global bot_thread
+    global bot_thread, cm_bot_thread
     
     # STARTUP
     logger.info("=" * 60)
@@ -264,6 +344,10 @@ async def lifespan(app: FastAPI):
         # Start Telegram bot (if enabled)
         logger.info("Starting Telegram bot (if enabled)...")
         bot_thread = start_bot_thread()
+        
+        # Start MLJCM bot (if token provided)
+        logger.info("Starting MLJCM bot (if token provided)...")
+        cm_bot_thread = start_cm_bot_thread()
         
         # Register shutdown signal handlers
         def signal_handler(sig, frame):

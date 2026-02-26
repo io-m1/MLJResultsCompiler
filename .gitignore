@@ -26,8 +26,9 @@ test_consolidation.log
 test_scalability.log
 
 # Secrets
+# Secrets
 .env
-
+*.db
 # Test data files (contain PII - never commit)
 *.xlsx
 !tests/**/*.xlsx

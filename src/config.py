@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     
     # Telegram Bot (REQUIRED if using bot)
     TELEGRAM_BOT_TOKEN: Optional[str] = None
+    MLJCM_BOT_TOKEN: Optional[str] = None
     WEBHOOK_BASE_URL: Optional[str] = None
     
     # Groq AI (OPTIONAL - set to enable AI features)
