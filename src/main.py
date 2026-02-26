@@ -64,8 +64,8 @@ def start_bot_thread():
             
             logger.info("Initializing Telegram bot in background thread...")
             
-            # Wait for old instance to disconnect
-            time.sleep(3)
+            # Wait for old instance to disconnect (Render keeps old process alive during deploy)
+            time.sleep(10)
             
             load_dotenv(dotenv_path='.env')
             
@@ -75,7 +75,7 @@ def start_bot_thread():
                 from telegram import Update
                 from telegram.error import Conflict, NetworkError, TelegramError
             except Exception as e:
-                logger.error(f"Failed to import telegram_bot: {e}")
+                logger.error(f"Failed to import telegram_bot: {e}", exc_info=True)
                 return
             
             token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -87,8 +87,9 @@ def start_bot_thread():
             asyncio.set_event_loop(loop)
             
             async def run_bot_with_retry():
+                """Run bot with retry logic. Returns True if should restart, False to exit."""
                 retry_count = 0
-                max_retries = 10
+                max_retries = 30  # More retries — Render free tier can take a while
                 
                 while retry_count < max_retries:
                     application = None
@@ -97,7 +98,6 @@ def start_bot_thread():
                         await application.initialize()
                         logger.info("✓ Bot initialized")
                         
-                        # Delete any lingering webhook
                         # Delete any lingering webhook
                         try:
                             await application.bot.delete_webhook(drop_pending_updates=True)
@@ -114,13 +114,14 @@ def start_bot_thread():
                             drop_pending_updates=True
                         )
                         logger.info("Bot stopped gracefully")
-                        return  # Exit retry loop if stopped gracefully
+                        return False  # Don't restart if stopped gracefully
                         
                     except Conflict as e:
                         retry_count += 1
-                        wait_time = 15 if retry_count == 1 else min(3 ** retry_count, 120)
+                        # Longer waits for conflict — let old instance die
+                        wait_time = 30 if retry_count <= 3 else min(5 ** min(retry_count - 3, 4), 120)
                         logger.error(f"Bot conflict #{retry_count}/{max_retries}: {e}")
-                        logger.warning(f"Waiting {wait_time}s...")
+                        logger.warning(f"Waiting {wait_time}s for old instance to die...")
                         
                         if application:
                             try:
@@ -146,12 +147,33 @@ def start_bot_thread():
                     except Exception as e:
                         retry_count += 1
                         logger.error(f"Bot error #{retry_count}: {e}", exc_info=True)
-                        await asyncio.sleep(5)
+                        
+                        if application:
+                            try:
+                                await application.stop()
+                            except:
+                                pass
+                        
+                        await asyncio.sleep(10)
                 
                 logger.error(f"Bot max retries ({max_retries}) exceeded")
+                return True  # Signal that we should restart after cooldown
+            
+            async def run_bot_forever():
+                """Keep trying to start the bot — never give up permanently."""
+                restart_count = 0
+                while True:
+                    should_restart = await run_bot_with_retry()
+                    if not should_restart:
+                        break  # Graceful stop
+                    
+                    restart_count += 1
+                    cooldown = min(60 * restart_count, 300)  # 60s, 120s, 180s... max 5min
+                    logger.warning(f"Bot restart #{restart_count} — cooling down {cooldown}s before retry cycle...")
+                    await asyncio.sleep(cooldown)
             
             try:
-                loop.run_until_complete(run_bot_with_retry())
+                loop.run_until_complete(run_bot_forever())
             except Exception as e:
                 logger.error(f"Fatal bot error: {e}", exc_info=True)
             finally:
