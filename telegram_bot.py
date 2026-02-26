@@ -216,8 +216,8 @@ class TelegramBotHandler:
             "Send me your Excel test files and I'll merge them for you."
         )
         
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /start command"""
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        """Handle /start command — entry point for ConversationHandler"""
         user_id = update.effective_user.id
         
         welcome_text = """
@@ -236,6 +236,7 @@ I can help you consolidate test results from multiple Excel files.
         
         await update.message.reply_text(welcome_text)
         logger.info(f"User {user_id} started the bot")
+        return SELECTING_FORMAT
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command"""
