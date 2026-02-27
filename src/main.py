@@ -113,8 +113,15 @@ def start_bot_thread():
                         )
                         logger.info("Bot is now polling for updates")
                         
-                        while application.updater and application.updater.running and not is_shutting_down:
-                            await asyncio.sleep(2)
+                        application.stop_event = asyncio.Event()
+                        
+                        async def check_shutdown():
+                            while not is_shutting_down and application.updater and application.updater.running:
+                                await asyncio.sleep(1)
+                            application.stop_event.set()
+                            
+                        asyncio.create_task(check_shutdown())
+                        await application.stop_event.wait()
                             
                         if is_shutting_down:
                             logger.info("Shutting down bot gracefully...")
@@ -279,8 +286,15 @@ def start_cm_bot_thread():
                         logger.info("Starting MLJCM polling...")
                         await cm_bot.start_polling()
                         
-                        while cm_bot.application.updater and cm_bot.application.updater.running and not is_shutting_down:
-                            await asyncio.sleep(2)
+                        cm_bot.stop_event = asyncio.Event()
+                        
+                        async def check_cm_shutdown():
+                            while not is_shutting_down and cm_bot.application.updater and cm_bot.application.updater.running:
+                                await asyncio.sleep(1)
+                            cm_bot.stop_event.set()
+                            
+                        asyncio.create_task(check_cm_shutdown())
+                        await cm_bot.stop_event.wait()
                             
                         if is_shutting_down:
                             logger.info("Shutting down MLJCM gracefully...")
@@ -436,6 +450,14 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     
     is_shutting_down = True
+    
+    if bot_thread and bot_thread.is_alive():
+        logger.info("Waiting for bottom primary thread to stop...")
+        bot_thread.join(timeout=3)
+        
+    if cm_bot_thread and cm_bot_thread.is_alive():
+        logger.info("Waiting for cm bot thread to stop...")
+        cm_bot_thread.join(timeout=3)
     
     try:
         # Cleanup async services
