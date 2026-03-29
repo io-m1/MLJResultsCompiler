@@ -113,15 +113,15 @@ def start_bot_thread():
                         )
                         logger.info("Bot is now polling for updates")
                         
-                        application.stop_event = asyncio.Event()
+                        stop_event = asyncio.Event()
                         
                         async def check_shutdown():
                             while not is_shutting_down and application.updater and application.updater.running:
                                 await asyncio.sleep(1)
-                            application.stop_event.set()
+                            stop_event.set()
                             
                         asyncio.create_task(check_shutdown())
-                        await application.stop_event.wait()
+                        await stop_event.wait()
                             
                         if is_shutting_down:
                             logger.info("Shutting down bot gracefully...")
