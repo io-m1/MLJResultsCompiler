@@ -286,15 +286,15 @@ def start_cm_bot_thread():
                         logger.info("Starting MLJCM polling...")
                         await cm_bot.start_polling()
                         
-                        cm_bot.stop_event = asyncio.Event()
+                        cm_stop_event = asyncio.Event()
                         
                         async def check_cm_shutdown():
                             while not is_shutting_down and cm_bot.application.updater and cm_bot.application.updater.running:
                                 await asyncio.sleep(1)
-                            cm_bot.stop_event.set()
+                            cm_stop_event.set()
                             
                         asyncio.create_task(check_cm_shutdown())
-                        await cm_bot.stop_event.wait()
+                        await cm_stop_event.wait()
                             
                         if is_shutting_down:
                             logger.info("Shutting down MLJCM gracefully...")
