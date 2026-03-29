@@ -191,3 +191,4 @@ class AgentRouter:
     def list_agents(self) -> List[str]:
         """List all available agents"""
         return list(self.agents.keys())
+        
