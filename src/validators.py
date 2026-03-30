@@ -77,12 +77,16 @@ def parse_score(score: any) -> Optional[float]:
 
 def validate_row_data(full_name: str, email: str, score: Optional[float]) -> Tuple[bool, str]:
     """
-    Validate a complete row of data
+    Validate a complete row of data.
+    
+    NOTE: score=None is deliberately ALLOWED — a participant may exist in a
+    file without a recorded score (e.g. SurveyHeart exports blank for absent).
+    Only name and email are hard requirements for a row to be kept.
     
     Args:
         full_name (str): Participant's full name
         email (str): Participant's email
-        score (float): Test score
+        score (float): Test score (None is accepted)
         
     Returns:
         Tuple[bool, str]: (is_valid, error_message)
@@ -95,8 +99,8 @@ def validate_row_data(full_name: str, email: str, score: Optional[float]) -> Tup
     if not email or not validate_email(email):
         errors.append(f"Invalid email: {email}")
     
-    if score is None:
-        errors.append("Score is required and must be numeric")
+    # Score is optional — None means the participant was absent for this test.
+    # Do NOT reject the row for a missing score.
     
     is_valid = len(errors) == 0
     error_msg = " | ".join(errors) if errors else ""

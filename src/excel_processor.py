@@ -306,7 +306,9 @@ class ExcelProcessor:
     
     def consolidate_results(self) -> Dict:
         """
-        Consolidate results from all tests into a single dataset dynamically
+        Consolidate results from all tests into a single dataset dynamically.
+        Collects ALL unique participants across ALL tests — no one is dropped
+        for missing from one particular test.
         
         Returns:
             Dict: Consolidated data {email: {name, test_N_score, ...}}
@@ -320,35 +322,38 @@ class ExcelProcessor:
             logger.error("No test data available for consolidation")
             return {}
         
-        # Prefer Test 1 as base, fall back to first available
-        base_test = 1 if 1 in available_tests else available_tests[0]
-        logger.info(f"Consolidating {len(available_tests)} tests (base: Test {base_test})")
-        
+        logger.info(f"Consolidating {len(available_tests)} tests: {available_tests}")
         for test_num in available_tests:
-            logger.debug(f"  Test {test_num}: {len(self.test_data[test_num])} participants")
+            logger.info(f"  Test {test_num}: {len(self.test_data[test_num])} participants")
         
+        # --- KEY FIX ---
+        # Step 1: Collect EVERY unique email across ALL tests, not just the base test.
+        # Use lowest-numbered test as the preferred name source.
+        all_participants = {}  # {email: name}
+        for test_num in available_tests:
+            for email, data in self.test_data[test_num].items():
+                if email not in all_participants:
+                    all_participants[email] = data['name']
+        
+        logger.info(f"Total unique participants across all tests: {len(all_participants)}")
+        
+        # Step 2: Build consolidated record for EVERY participant.
+        # Score is None if participant was absent for that test.
         consolidated = {}
-        
-        # Build from base test
-        for email, data in self.test_data[base_test].items():
-            consolidated[email] = {
-                'name': data['name'],
-                f'test_{base_test}_score': data['score']
-            }
-            
-            # Add scores from all other tests
+        for email, name in all_participants.items():
+            record = {'name': name}
             for test_num in available_tests:
-                if test_num != base_test:
-                    if email in self.test_data[test_num]:
-                        consolidated[email][f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
-                    else:
-                        consolidated[email][f'test_{test_num}_score'] = None
+                if email in self.test_data[test_num]:
+                    record[f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
+                else:
+                    record[f'test_{test_num}_score'] = None
+            consolidated[email] = record
         
         # Sort by name
-        consolidated = dict(sorted(consolidated.items(), 
-                                  key=lambda x: x[1]['name'].lower()))
+        consolidated = dict(sorted(consolidated.items(),
+                                   key=lambda x: x[1]['name'].lower()))
         
-        logger.info(f"Consolidated: {len(consolidated)} participants across {len(available_tests)} tests")
+        logger.info(f"Consolidated: {len(consolidated)} unique participants across {len(available_tests)} tests")
         return consolidated
     
     def generate_preview_image(self, consolidated_data: Dict, max_rows: int = 12) -> Optional[Path]:
