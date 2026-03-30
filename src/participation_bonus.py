@@ -20,16 +20,11 @@ logger = logging.getLogger(__name__)
 class ParticipationBonusCalculator:
     """Calculate participation bonus scores (Grade 6)"""
     
-    # Bonus score ranges by participation level
-    BONUS_RANGES = {
-        6: (85, 93),     # 6+ tests: 85-93%
-        5: (85, 93),     # 5 tests: 85-93%
-        4: (85, 93),     # 4 tests: 85-93%
-        3: (80, 80),     # 3 tests: 80% (fixed)
-        2: (70, 75),     # 2 tests: 70-75% (range based on previous scores)
-        1: None,         # 1 test: No bonus
-        0: None          # No tests: No bonus
-    }
+    # Dynamic Bonus score ranges based on completion percentage:
+    # >= 80% tests completed: 85-93%
+    # >= 60% tests completed: 80% (fixed)
+    # >= 40% tests completed: 70-75%
+    # < 40% tests completed: Flat 50% (handled as default assignment)
     
     def __init__(self):
         """Initialize calculator"""
@@ -95,26 +90,37 @@ class ParticipationBonusCalculator:
         ]
         
         participation_count = len(completed_tests)
+        total_tests = len(test_numbers)
         
         self.logger.info(
             f"  Bonus calc for {participant_name} ({participant_email}): "
-            f"{participation_count} tests completed"
+            f"{participation_count}/{total_tests} tests completed"
         )
         
-        # Get bonus range for this participation level
-        # For 6+ tests, use the 6 tier (same as 5+ = 85-93)
-        lookup_count = min(participation_count, 6)  # Cap at 6 for lookup
-        bonus_range = self.BONUS_RANGES.get(lookup_count)
+        if total_tests == 0:
+            return None, {'reason': 'No tests available'}
+            
+        completion_ratio = participation_count / total_tests
+        
+        # Determine dynamic bonus range based on percentage of tests completed
+        if completion_ratio >= 0.8:
+            bonus_range = (85, 93)
+        elif completion_ratio >= 0.6:
+            bonus_range = (80, 80)
+        elif completion_ratio >= 0.4:
+            bonus_range = (70, 75)
+        else:
+            bonus_range = None
         
         if bonus_range is None:
-            # No bonus for 1 or fewer tests
+            # Under 40% completion gets no bonus based on this logic
             return None, {
                 'email': participant_email,
                 'name': participant_name,
                 'participation_count': participation_count,
                 'bonus_score': None,
                 'bonus_range': None,
-                'reason': f'Completed only {participation_count} test(s) - no bonus'
+                'reason': f'Completed {participation_count}/{total_tests} tests ({completion_ratio*100:.0f}%) - beneath bonus threshold'
             }
         
         # Calculate bonus score within the range
@@ -192,13 +198,13 @@ class ParticipationBonusCalculator:
                 if score is not None and score > 0:
                     completed_count += 1
             
-            missing_count = total_tests - completed_count
+            completion_ratio = completed_count / total_tests if total_tests > 0 else 0
             
             # Calculate assignment score
-            if missing_count >= 4:
-                # 4+ tests missing → flat 50% assignment score
+            if completion_ratio < 0.4:
+                # Under 40% tests completed → flat 50% assignment score
                 assignment_score = 50.0
-                assignment_reason = f'{missing_count} tests missing — flat 50% assignment'
+                assignment_reason = f'Only {completed_count}/{total_tests} tests completed — flat 50% assignment'
             else:
                 # Use normal bonus logic for students who did enough tests
                 bonus_score, bonus_info = self.calculate_bonus_score(

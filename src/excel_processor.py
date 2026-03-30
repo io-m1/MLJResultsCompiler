@@ -215,6 +215,15 @@ class ExcelProcessor:
             
             # === Step 5: Extract data ===
             import re
+            
+            # Detect if score needs scaling to percentage based on header like "Total Marks (17)"
+            score_header = str(headers.get(score_col, ''))
+            scale_max = None
+            m = re.search(r'\((\d+)\)', score_header)
+            if m:
+                scale_max = float(m.group(1))
+                logger.info(f"  Detected max score of {scale_max} from header '{score_header}'. Scores will be scaled to 100%.")
+                
             self.test_data[test_number] = {}
             row_count = 0
             
@@ -228,6 +237,11 @@ class ExcelProcessor:
                     email = f"{safe_name}@no-email.local"
                 
                 score = parse_score(row[score_col - 1] if score_col <= len(row) else None)
+                
+                # Scale raw score (e.g., 17/17 -> 100%) so that final average logic works correctly
+                if score is not None and scale_max and scale_max > 0:
+                    if score <= scale_max:
+                        score = round((score / scale_max) * 100.0, 1)
                 
                 is_valid, error_msg = validate_row_data(full_name, email, score)
                 
