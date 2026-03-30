@@ -35,9 +35,26 @@ class ExcelProcessor:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.test_data = {}  # {test_num: {email: {name, score}}}
         
+    # Expanded header patterns — covers SurveyHeart, Google Forms, Microsoft Forms, etc.
+    NAME_PATTERNS = [
+        'full name', 'fullname', 'name', 'participant', 'student',
+        'respondent', 'student name', 'candidate', 'your name',
+        'first name', 'surname', 'learner',
+    ]
+    EMAIL_PATTERNS = [
+        'email', 'e-mail', 'email address', 'mail', 'e mail',
+        'your email', 'student email', 'respondent email',
+        'email id', 'emailaddress',
+    ]
+    SCORE_PATTERNS = [
+        'score', 'result', 'percentage', 'marks', 'total',
+        'grade', 'point', 'total score', 'total marks',
+        'mark', 'obtained', 'marks obtained',
+    ]
+
     def find_column_index(self, sheet, column_names: List[str]) -> Optional[int]:
         """
-        Find the index of a column by any of the possible names
+        Find the index of a column by any of the possible names (substring match).
         
         Args:
             sheet: openpyxl worksheet
@@ -52,13 +69,92 @@ class ExcelProcessor:
                     return cell_idx
         return None
     
+    def _get_all_headers(self, sheet) -> Dict[int, str]:
+        """Read all header cells from row 1 and return {col_index: header_text}"""
+        headers = {}
+        for row in sheet.iter_rows(min_row=1, max_row=1):
+            for cell_idx, cell in enumerate(row, 1):
+                if cell.value:
+                    headers[cell_idx] = str(cell.value).strip()
+        return headers
+    
+    def _sniff_columns(self, sheet) -> Tuple[Optional[int], Optional[int], Optional[int]]:
+        """
+        Content-sniffing fallback: scan the first 10 data rows to auto-detect
+        which column contains emails, names, and numeric scores.
+        
+        Returns:
+            Tuple of (name_col, email_col, score_col) — 1-based indices, or None
+        """
+        import re
+        email_regex = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+        
+        # Collect stats per column: how many look like emails, names, scores
+        col_stats = {}   # {col_idx: {'email': count, 'text': count, 'number': count}}
+        
+        sample_rows = list(sheet.iter_rows(min_row=2, max_row=12, values_only=True))
+        if not sample_rows:
+            return None, None, None
+
+        num_cols = max(len(r) for r in sample_rows)
+        
+        for col_idx in range(num_cols):
+            stats = {'email': 0, 'text': 0, 'number': 0, 'total': 0}
+            for row in sample_rows:
+                if col_idx >= len(row) or row[col_idx] is None:
+                    continue
+                val = row[col_idx]
+                stats['total'] += 1
+                
+                if isinstance(val, str):
+                    val_stripped = val.strip()
+                    if email_regex.match(val_stripped):
+                        stats['email'] += 1
+                    elif len(val_stripped) > 1:
+                        stats['text'] += 1
+                elif isinstance(val, (int, float)):
+                    if 0 <= val <= 100:
+                        stats['number'] += 1
+                    else:
+                        stats['number'] += 1  # still a number, even if out of range
+            
+            col_stats[col_idx + 1] = stats  # Store as 1-based
+        
+        # Identify columns
+        email_col = None
+        name_col = None
+        score_col = None
+        
+        # Email: column with most email-like values
+        email_candidates = [(idx, s['email']) for idx, s in col_stats.items() if s['email'] >= 2]
+        if email_candidates:
+            email_col = max(email_candidates, key=lambda x: x[1])[0]
+        
+        # Score: column with most numeric values (exclude email column)
+        score_candidates = [(idx, s['number']) for idx, s in col_stats.items()
+                           if s['number'] >= 2 and idx != email_col]
+        if score_candidates:
+            # Prefer the LAST numeric column (usually the score/result, not an ID/serial number)
+            score_col = max(score_candidates, key=lambda x: (x[1], x[0]))[0]
+        
+        # Name: column with most text values (exclude email and score columns)
+        name_candidates = [(idx, s['text']) for idx, s in col_stats.items()
+                          if s['text'] >= 2 and idx != email_col and idx != score_col]
+        if name_candidates:
+            name_col = max(name_candidates, key=lambda x: x[1])[0]
+        
+        logger.info(f"  Content-sniff results: name_col={name_col}, email_col={email_col}, score_col={score_col}")
+        return name_col, email_col, score_col
+    
     def load_test_file(self, filepath: Path, test_number: int) -> bool:
         """
-        Load a single test file and extract data
+        Load a single test file and extract data.
+        Uses header-matching first, falls back to content-sniffing if headers
+        are not recognized.
         
         Args:
             filepath (Path): Path to the test XLSX file
-            test_number (int): Test number (1-5)
+            test_number (int): Test number
             
         Returns:
             bool: True if successful
@@ -68,26 +164,53 @@ class ExcelProcessor:
             wb = openpyxl.load_workbook(filepath, data_only=True)
             ws = wb.active
             
-            # Find column indices
-            name_col = self.find_column_index(ws, ['Full Name', 'Name', 'Participant'])
-            email_col = self.find_column_index(ws, ['Email', 'E-mail', 'Email Address'])
+            # === Step 1: Log every header in the file for debugging ===
+            headers = self._get_all_headers(ws)
+            logger.info(f"  Headers in {filepath.name}: {headers}")
             
-            # For score, prioritize the column that matches this specific test
-            # e.g., for Test 2, look for "Test 2 Score" first
-            score_col = self.find_column_index(ws, [f'Test {test_number} Score', f'Test {test_number} Result'])
+            # === Step 2: Try header-based matching (expanded patterns) ===
+            name_col = self.find_column_index(ws, self.NAME_PATTERNS)
+            email_col = self.find_column_index(ws, self.EMAIL_PATTERNS)
             
-            # If not found, fall back to generic score columns
+            # For score, try test-specific column first, then generic
+            score_col = self.find_column_index(ws, [
+                f'Test {test_number} Score', f'Test {test_number} Result',
+                f'Test {test_number}', f'test{test_number}',
+            ])
             if not score_col:
-                score_col = self.find_column_index(ws, ['Score', 'Result', '%', 'Percentage'])
+                score_col = self.find_column_index(ws, self.SCORE_PATTERNS + ['%'])
             
+            matched_via = "header-match"
+            
+            # === Step 3: Content-sniffing fallback ===
+            if not all([name_col, email_col, score_col]):
+                logger.warning(f"  Header match incomplete (name={name_col}, email={email_col}, score={score_col}). "
+                              f"Falling back to content-sniffing...")
+                
+                sniffed_name, sniffed_email, sniffed_score = self._sniff_columns(ws)
+                
+                # Only fill in what header matching couldn't find
+                if not name_col and sniffed_name:
+                    name_col = sniffed_name
+                if not email_col and sniffed_email:
+                    email_col = sniffed_email
+                if not score_col and sniffed_score:
+                    score_col = sniffed_score
+                
+                matched_via = "content-sniff (fallback)"
+            
+            # === Step 4: Final check ===
             if not all([name_col, email_col, score_col]):
                 logger.error(f"Could not find required columns in {filepath.name}")
                 logger.error(f"  Name col: {name_col}, Email col: {email_col}, Score col: {score_col}")
+                logger.error(f"  Available headers: {headers}")
                 return False
             
-            logger.info(f"Columns found - Name: {name_col}, Email: {email_col}, Score: {score_col}")
+            logger.info(f"  Columns resolved via {matched_via} — Name: col {name_col} ('{headers.get(name_col, '?')}'), "
+                        f"Email: col {email_col} ('{headers.get(email_col, '?')}'), "
+                        f"Score: col {score_col} ('{headers.get(score_col, '?')}')")
             
-            # Extract data
+            # === Step 5: Extract data ===
             self.test_data[test_number] = {}
             row_count = 0
             
@@ -108,7 +231,11 @@ class ExcelProcessor:
                     if row_count <= 3:
                         logger.info(f"  Test {test_number} row {row_idx}: {full_name} = {score}")
                 else:
-                    logger.warning(f"Row {row_idx} in test {test_number}: {error_msg}")
+                    if row_count == 0 and row_idx <= 5:
+                        # Log early failures in detail to help debug column misalignment
+                        logger.warning(f"  Row {row_idx} REJECTED: name='{full_name}', email='{email}', score={score} → {error_msg}")
+                    else:
+                        logger.warning(f"Row {row_idx} in test {test_number}: {error_msg}")
             
             logger.info(f"Loaded {row_count} valid records from test {test_number}")
             wb.close()
