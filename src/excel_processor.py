@@ -110,6 +110,9 @@ class ExcelProcessor:
                     val_stripped = val.strip()
                     if email_regex.match(val_stripped):
                         stats['email'] += 1
+                    elif val_stripped.replace('%', '').strip().replace('.', '', 1).isdigit():
+                        # Basic check to see if it's a number/percentage string
+                        stats['number'] += 1
                     elif len(val_stripped) > 1:
                         stats['text'] += 1
                 elif isinstance(val, (int, float)):
@@ -183,7 +186,7 @@ class ExcelProcessor:
             matched_via = "header-match"
             
             # === Step 3: Content-sniffing fallback ===
-            if not all([name_col, email_col, score_col]):
+            if not all([name_col, score_col]) or not email_col:
                 logger.warning(f"  Header match incomplete (name={name_col}, email={email_col}, score={score_col}). "
                               f"Falling back to content-sniffing...")
                 
@@ -200,23 +203,30 @@ class ExcelProcessor:
                 matched_via = "content-sniff (fallback)"
             
             # === Step 4: Final check ===
-            if not all([name_col, email_col, score_col]):
-                logger.error(f"Could not find required columns in {filepath.name}")
+            if not all([name_col, score_col]):
+                logger.error(f"Could not find required columns (Name & Score) in {filepath.name}")
                 logger.error(f"  Name col: {name_col}, Email col: {email_col}, Score col: {score_col}")
                 logger.error(f"  Available headers: {headers}")
                 return False
             
             logger.info(f"  Columns resolved via {matched_via} — Name: col {name_col} ('{headers.get(name_col, '?')}'), "
-                        f"Email: col {email_col} ('{headers.get(email_col, '?')}'), "
+                        f"Email: col {email_col} ('{headers.get(email_col, 'MISSING')}'), "
                         f"Score: col {score_col} ('{headers.get(score_col, '?')}')")
             
             # === Step 5: Extract data ===
+            import re
             self.test_data[test_number] = {}
             row_count = 0
             
             for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 full_name = clean_name(row[name_col - 1] if name_col <= len(row) else "")
-                email = clean_email(row[email_col - 1] if email_col <= len(row) else "")
+                email = clean_email(row[email_col - 1] if email_col and email_col <= len(row) else "")
+                
+                # Handle test files that do not collect emails (SurveyHeart sometimes ignores them)
+                if not email and full_name:
+                    safe_name = re.sub(r'[^a-zA-Z0-9]', '', full_name.lower())
+                    email = f"{safe_name}@no-email.local"
+                
                 score = parse_score(row[score_col - 1] if score_col <= len(row) else None)
                 
                 is_valid, error_msg = validate_row_data(full_name, email, score)
@@ -454,24 +464,47 @@ class ExcelProcessor:
             logger.info(f"  Test {test_num}: {len(self.test_data[test_num])} participants")
         
         # --- KEY FIX ---
-        # Step 1: Collect EVERY unique email across ALL tests, not just the base test.
-        # Use lowest-numbered test as the preferred name source.
-        all_participants = {}  # {email: name}
+        # Step 1: Create a mapping of canonical names to real emails
+        # This helps merge pseudo-emails (like shuaibu@no-email.local) with their real email from another test
+        name_to_real_email = {}
         for test_num in available_tests:
             for email, data in self.test_data[test_num].items():
-                if email not in all_participants:
-                    all_participants[email] = data['name']
+                if not email.endswith('@no-email.local'):
+                    name_key = clean_name(data['name']).lower()
+                    # Only register if we haven't seen this name yet, or keep the first valid email
+                    if name_key not in name_to_real_email:
+                        name_to_real_email[name_key] = email
+        
+        # Step 2: Build aligned participant data
+        merged_test_data = {t: {} for t in available_tests}
+        all_participants = {}  # {final_email: name}
+        
+        for test_num in available_tests:
+            for email, data in self.test_data[test_num].items():
+                name = data['name']
+                name_key = clean_name(name).lower()
+                
+                # Resolve email: if pseudo-email, try to map to real email via name
+                if email.endswith('@no-email.local') and name_key in name_to_real_email:
+                    final_email = name_to_real_email[name_key]
+                else:
+                    final_email = email
+                
+                if final_email not in all_participants:
+                    all_participants[final_email] = name
+                
+                merged_test_data[test_num][final_email] = data
         
         logger.info(f"Total unique participants across all tests: {len(all_participants)}")
         
-        # Step 2: Build consolidated record for EVERY participant.
+        # Step 3: Build consolidated record for EVERY participant.
         # Score is None if participant was absent for that test.
         consolidated = {}
         for email, name in all_participants.items():
             record = {'name': name}
             for test_num in available_tests:
-                if email in self.test_data[test_num]:
-                    record[f'test_{test_num}_score'] = self.test_data[test_num][email]['score']
+                if email in merged_test_data[test_num]:
+                    record[f'test_{test_num}_score'] = merged_test_data[test_num][email]['score']
                 else:
                     record[f'test_{test_num}_score'] = None
             consolidated[email] = record

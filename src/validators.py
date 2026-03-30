@@ -96,7 +96,9 @@ def validate_row_data(full_name: str, email: str, score: Optional[float]) -> Tup
     if not full_name or not full_name.strip():
         errors.append("Full name is required")
     
-    if not email or not validate_email(email):
+    # If email is provided, validate it. Otherwise, allow it to be empty.
+    # We will generate a pseudo-email based on the name in excel_processor.
+    if email and email.strip() and not validate_email(email):
         errors.append(f"Invalid email: {email}")
     
     # Score is optional — None means the participant was absent for this test.
