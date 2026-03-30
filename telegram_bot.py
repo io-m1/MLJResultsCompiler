@@ -337,7 +337,7 @@ class TelegramBotHandler:
             
             # Count total files in session
             session = session_manager.get_session(user_id)
-            uploaded = session.get('files', {})
+            uploaded = session.get('uploaded_files', {})
             file_count = len(uploaded)
             file_list = ', '.join(f'Test {n}' for n in sorted(uploaded.keys()))
             
@@ -345,7 +345,7 @@ class TelegramBotHandler:
             await update.message.reply_text(
                 f"✅ <b>Test {test_num}</b> received!\n\n"
                 f"📁 Files uploaded: <b>{file_count}</b> ({file_list})\n\n"
-                f"{'📤 Send more files or tap /consolidate when ready.' if file_count < 5 else '🎯 You have 5 files! Tap /consolidate to process.'}",
+                f"📤 Send more files or tap /consolidate when ready.",
                 parse_mode="HTML"
             )
             
